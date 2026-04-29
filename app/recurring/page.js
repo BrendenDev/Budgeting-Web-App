@@ -226,7 +226,7 @@ function RecurringContent() {
   };
 
   return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
+    <div className="page-container">
       <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Recurring</h1>
@@ -252,7 +252,7 @@ function RecurringContent() {
               opacity: rule.isActive === false ? 0.5 : 1,
               transition: 'opacity 0.3s ease',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="list-item-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
                   <div style={{
                     width: '36px', height: '36px', borderRadius: '8px',
@@ -277,7 +277,7 @@ function RecurringContent() {
                     </p>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div className="list-item-row-right" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <span style={{
                     fontSize: '1.1rem', fontWeight: '700', fontFamily: 'var(--font-mono)',
                     color: rule.type === 'income' ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',

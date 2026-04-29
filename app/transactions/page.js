@@ -110,7 +110,7 @@ function TransactionsContent() {
   const getAccountName = (id) => accounts.find(a => a._id === id)?.name || 'Unknown';
 
   return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
+    <div className="page-container">
       <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Transactions</h1>
@@ -142,7 +142,7 @@ function TransactionsContent() {
           {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: '60px', borderRadius: 'var(--radius-md)' }} />)}
         </div>
       ) : filtered.length > 0 ? (
-        <div className="glass-card animate-fade-in" style={{ overflow: 'hidden' }}>
+        <div className="glass-card animate-fade-in" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table className="data-table">
             <thead>
               <tr>

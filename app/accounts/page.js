@@ -82,7 +82,7 @@ function AccountsContent() {
   const totalBalance = accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
 
   return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
+    <div className="page-container">
       <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Accounts</h1>

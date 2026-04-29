@@ -160,13 +160,13 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="page-container">
+        <div className="stat-grid">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="skeleton" style={{ height: '120px', borderRadius: 'var(--radius-lg)' }} />
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+        <div className="chart-grid">
           <div className="skeleton" style={{ height: '320px', borderRadius: 'var(--radius-lg)' }} />
           <div className="skeleton" style={{ height: '320px', borderRadius: 'var(--radius-lg)' }} />
         </div>
@@ -175,7 +175,7 @@ function DashboardContent() {
   }
 
   return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
+    <div className="page-container">
       {/* Sync Status Banner */}
       {syncStatus && (
         <div className="animate-fade-in" style={{
@@ -241,7 +241,7 @@ function DashboardContent() {
           </div>
 
           {/* Input row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 120px 1fr 1fr 120px auto', gap: '0.5rem', alignItems: 'center' }}>
+          <div className="quick-add-grid">
             <input className="input-field" placeholder="What did you spend on?" value={quickForm.description} onChange={e => setQuickForm({...quickForm, description: e.target.value})} required style={{ fontSize: '0.85rem', padding: '0.55rem 0.75rem' }} />
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', fontSize: '0.85rem', pointerEvents: 'none' }}>$</span>
@@ -268,12 +268,7 @@ function DashboardContent() {
       </div>
 
       {/* Stat Cards */}
-      <div className="animate-fade-in" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '1.25rem',
-        marginBottom: '2rem',
-      }}>
+      <div className="stat-grid animate-fade-in">
         <div className="glass-card stat-card-emerald" style={{ padding: '1.25rem 1.5rem' }}>
           <p style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
             Total Balance
@@ -332,12 +327,7 @@ function DashboardContent() {
       </div>
 
       {/* Charts Row */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '2fr 1fr',
-        gap: '1.5rem',
-        marginBottom: '2rem',
-      }}>
+      <div className="chart-grid" style={{ marginBottom: '2rem' }}>
         {/* Balance Projection Chart */}
         <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>

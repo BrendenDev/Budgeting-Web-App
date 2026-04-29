@@ -92,21 +92,9 @@ export default function Sidebar() {
   const { user, logout } = useUser();
 
   return (
-    <aside style={{
-      width: '260px',
-      minHeight: '100vh',
-      background: 'var(--color-bg-secondary)',
-      borderRight: '1px solid var(--color-border-default)',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      zIndex: 40,
-    }}>
+    <aside className="app-sidebar">
       {/* Logo */}
-      <div style={{
+      <div className="sidebar-logo-area" style={{
         padding: '1.5rem',
         borderBottom: '1px solid var(--color-border-default)',
       }}>
@@ -136,26 +124,18 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <nav className="sidebar-nav-area">
         {navItems.map((item) => {
           const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
+              className="sidebar-nav-item"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                padding: '0.7rem 1rem',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '0.9rem',
                 fontWeight: isActive ? '600' : '400',
                 color: isActive ? 'var(--color-accent-indigo-light)' : 'var(--color-text-secondary)',
                 background: isActive ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                textDecoration: 'none',
-                transition: 'all 0.2s ease',
-                position: 'relative',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
@@ -183,14 +163,14 @@ export default function Sidebar() {
                 }} />
               )}
               {item.icon}
-              {item.label}
+              <span className="sidebar-nav-text">{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
       {/* User Section */}
-      <div style={{
+      <div className="sidebar-user-area" style={{
         padding: '1rem 1.25rem',
         borderTop: '1px solid var(--color-border-default)',
       }}>
