@@ -151,7 +151,7 @@ export default function Sidebar() {
               }}
             >
               {isActive && (
-                <div style={{
+                <div className="sidebar-active-bar" style={{
                   position: 'absolute',
                   left: 0,
                   top: '50%',

@@ -8,6 +8,7 @@ import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
+import { getTodayMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
 
 function TransactionsContent() {
@@ -20,7 +21,7 @@ function TransactionsContent() {
   const [editingTx, setEditingTx] = useState(null);
   const [form, setForm] = useState({
     description: '', amount: '', type: 'expense', category: 'Misc',
-    date: new Date().toISOString().split('T')[0], accountId: '', notes: '',
+    date: getTodayMT(), accountId: '', notes: '',
   });
   const [saving, setSaving] = useState(false);
   const [filterType, setFilterType] = useState('all');
@@ -47,7 +48,7 @@ function TransactionsContent() {
     setEditingTx(null);
     setForm({
       description: '', amount: '', type: 'expense', category: 'Misc',
-      date: new Date().toISOString().split('T')[0], accountId: accounts[0]?._id || '', notes: '',
+      date: getTodayMT(), accountId: accounts[0]?._id || '', notes: '',
     });
     setShowModal(true);
   };
@@ -111,7 +112,7 @@ function TransactionsContent() {
 
   return (
     <div className="page-container">
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Transactions</h1>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
@@ -125,13 +126,13 @@ function TransactionsContent() {
       </div>
 
       {/* Filters */}
-      <div className="animate-fade-in" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <select className="select-field" style={{ width: 'auto', minWidth: '130px' }} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+      <div className="animate-fade-in" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <select className="select-field" style={{ width: 'auto', minWidth: '130px', flex: '1 1 auto' }} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
           <option value="all">All Types</option>
           <option value="income">Income</option>
           <option value="expense">Expense</option>
         </select>
-        <select className="select-field" style={{ width: 'auto', minWidth: '160px' }} value={filterAccount} onChange={(e) => setFilterAccount(e.target.value)}>
+        <select className="select-field" style={{ width: 'auto', minWidth: '160px', flex: '1 1 auto' }} value={filterAccount} onChange={(e) => setFilterAccount(e.target.value)}>
           <option value="all">All Accounts</option>
           {accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}
         </select>

@@ -1,18 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 
+const TIMEZONE = 'America/Denver';
+
+/** Get today's YYYY-MM-DD in Mountain Time */
+function getTodayMT() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+}
+
+/** Parse a date string/Date into a noon-UTC Date to avoid timezone boundary issues */
+function parseDateSafe(dateInput) {
+  if (!dateInput) return null;
+  let str;
+  if (typeof dateInput === 'string') {
+    str = dateInput.split('T')[0];
+  } else if (dateInput instanceof Date) {
+    str = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(dateInput);
+  } else {
+    return null;
+  }
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+}
+
+/** Format a Date to YYYY-MM-DD in Mountain Time */
+function toDateStringMT(dateInput) {
+  if (!dateInput) return '';
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(d);
+}
+
 /**
- * POST /api/rules/process
+ * POST /api/recurring/process
  * Materializes all missed recurring rule occurrences into real transactions.
- * 
- * Body: { userId: string }
- * 
- * For each active rule, this endpoint:
- * 1. Looks up the rule_occurrences tracker for that rule
- * 2. Calculates all occurrences between lastProcessedDate and today
- * 3. Creates real transaction documents for each missed occurrence
- * 4. Updates account balances
- * 5. Updates the tracker with new counts and dates
  */
 export async function POST(request) {
   try {
@@ -22,8 +42,8 @@ export async function POST(request) {
     }
 
     const db = await getDb();
-    const today = new Date();
-    today.setHours(23, 59, 59, 999); // Process up to end of today
+    const todayStr = getTodayMT();
+    const today = parseDateSafe(todayStr); // noon UTC of today in MT
 
     // Get all active rules for this user
     const rules = await db.collection('rules')
@@ -54,13 +74,17 @@ export async function POST(request) {
       let processFrom;
       if (tracker && tracker.lastProcessedDate) {
         // Start from the day after last processed
-        processFrom = new Date(tracker.lastProcessedDate);
-        processFrom.setDate(processFrom.getDate() + 1);
-        processFrom.setHours(0, 0, 0, 0);
+        const lastDate = parseDateSafe(tracker.lastProcessedDate);
+        lastDate.setUTCDate(lastDate.getUTCDate() + 1);
+        processFrom = lastDate;
       } else {
         // First time processing this rule — start from its startDate
-        processFrom = new Date(rule.startDate);
-        processFrom.setHours(0, 0, 0, 0);
+        processFrom = parseDateSafe(rule.startDate);
+      }
+
+      if (!processFrom) {
+        results.push({ rule: rule.name, created: 0, reason: 'Invalid start date' });
+        continue;
       }
 
       // Don't process future dates
@@ -70,9 +94,12 @@ export async function POST(request) {
       }
 
       // If rule has ended before our processing window, skip
-      if (rule.endDate && new Date(rule.endDate) < processFrom) {
-        results.push({ rule: rule.name, created: 0, reason: 'Rule has ended' });
-        continue;
+      if (rule.endDate) {
+        const ruleEnd = parseDateSafe(rule.endDate);
+        if (ruleEnd && ruleEnd < processFrom) {
+          results.push({ rule: rule.name, created: 0, reason: 'Rule has ended' });
+          continue;
+        }
       }
 
       // Generate all occurrences in the window [processFrom, today]
@@ -93,12 +120,12 @@ export async function POST(request) {
         .toArray();
 
       const existingDateKeys = new Set(
-        existingTx.map(tx => new Date(tx.date).toISOString().split('T')[0])
+        existingTx.map(tx => toDateStringMT(tx.date))
       );
 
       // Filter out dates that already have transactions
       const newOccurrences = occurrences.filter(date => {
-        const dateKey = date.toISOString().split('T')[0];
+        const dateKey = toDateStringMT(date);
         return !existingDateKeys.has(dateKey);
       });
 
@@ -123,7 +150,7 @@ export async function POST(request) {
         accountId: rule.accountId || null,
         amount: rule.amount,
         description: rule.name,
-        category: rule.category || 'Miscellaneous',
+        category: rule.category || 'Misc',
         date: date,
         type: rule.type,
         isRecurring: true,
@@ -172,8 +199,8 @@ export async function POST(request) {
         rule: rule.name,
         created: newOccurrences.length,
         skippedDuplicates: occurrences.length - newOccurrences.length,
-        from: processFrom.toISOString().split('T')[0],
-        to: latestDate.toISOString().split('T')[0],
+        from: toDateStringMT(processFrom),
+        to: toDateStringMT(latestDate),
         totalOccurrences: prevCount + newOccurrences.length,
       });
     }
@@ -203,7 +230,7 @@ export async function POST(request) {
   }
 }
 
-// GET /api/rules/process?userId=xxx – get all occurrence trackers
+// GET /api/recurring/process?userId=xxx – get all occurrence trackers
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -224,40 +251,60 @@ export async function GET(request) {
 }
 
 /**
- * Generate all occurrence dates for a rule within [startDate, endDate]
+ * Generate all occurrence dates for a rule within [startDate, endDate].
+ * Uses noon-UTC dates and preserves anchor day-of-month.
  */
 function generateOccurrences(rule, startDate, endDate) {
   const dates = [];
-  let current = new Date(rule.startDate);
-  current.setHours(0, 0, 0, 0);
+  let current = parseDateSafe(rule.startDate);
+  if (!current) return dates;
+
+  const anchorDay = current.getUTCDate();
 
   // Advance to the first occurrence on or after startDate
   while (current < startDate) {
-    current = advanceDate(current, rule.frequency);
+    current = advanceDate(current, rule.frequency, anchorDay);
   }
 
   // Collect all occurrences up to endDate
   while (current <= endDate) {
     // Respect rule endDate
-    if (rule.endDate && current > new Date(rule.endDate)) break;
+    if (rule.endDate) {
+      const ruleEnd = parseDateSafe(rule.endDate);
+      if (ruleEnd && current > ruleEnd) break;
+    }
 
     dates.push(new Date(current));
-    current = advanceDate(current, rule.frequency);
+    current = advanceDate(current, rule.frequency, anchorDay);
   }
 
   return dates;
 }
 
-function advanceDate(date, frequency) {
+function advanceDate(date, frequency, anchorDay) {
   const next = new Date(date);
   switch (frequency) {
-    case 'daily':     next.setDate(next.getDate() + 1); break;
-    case 'weekly':    next.setDate(next.getDate() + 7); break;
-    case 'biweekly':  next.setDate(next.getDate() + 14); break;
-    case 'monthly':   next.setMonth(next.getMonth() + 1); break;
-    case 'quarterly': next.setMonth(next.getMonth() + 3); break;
-    case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
-    default:          next.setMonth(next.getMonth() + 1);
+    case 'daily':     next.setUTCDate(next.getUTCDate() + 1); break;
+    case 'weekly':    next.setUTCDate(next.getUTCDate() + 7); break;
+    case 'biweekly':  next.setUTCDate(next.getUTCDate() + 14); break;
+    case 'monthly': {
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      if (anchorDay) {
+        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+        next.setUTCDate(Math.min(anchorDay, maxDay));
+      }
+      break;
+    }
+    case 'quarterly': {
+      next.setUTCMonth(next.getUTCMonth() + 3);
+      if (anchorDay) {
+        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+        next.setUTCDate(Math.min(anchorDay, maxDay));
+      }
+      break;
+    }
+    case 'yearly':    next.setUTCFullYear(next.getUTCFullYear() + 1); break;
+    default:          next.setUTCMonth(next.getUTCMonth() + 1);
   }
   return next;
 }

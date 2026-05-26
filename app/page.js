@@ -8,6 +8,7 @@ import Modal from '@/components/Modal';
 import { useDialog } from '@/components/ConfirmDialog';
 import CategoryPicker from '@/components/CategoryPicker';
 import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor } from '@/lib/calculation-engine';
+import { getTodayMT, getCurrentMonthMT, getCurrentYearMT } from '@/lib/date-utils';
 import { ACCOUNT_TYPES, EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
@@ -25,7 +26,7 @@ function DashboardContent() {
   // Quick-add transaction state
   const [quickForm, setQuickForm] = useState({
     description: '', amount: '', type: 'expense', category: 'Misc',
-    date: new Date().toISOString().split('T')[0], accountId: '',
+    date: getTodayMT(), accountId: '',
   });
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickSuccess, setQuickSuccess] = useState(false);
@@ -40,7 +41,7 @@ function DashboardContent() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setQuickForm({ description: '', amount: '', type: quickForm.type, category: quickForm.type === 'income' ? 'Work' : 'Misc', date: new Date().toISOString().split('T')[0], accountId: quickForm.accountId });
+        setQuickForm({ description: '', amount: '', type: quickForm.type, category: quickForm.type === 'income' ? 'Work' : 'Misc', date: getTodayMT(), accountId: quickForm.accountId });
         setQuickSuccess(true);
         setTimeout(() => setQuickSuccess(false), 2000);
         fetchData();
@@ -122,8 +123,7 @@ function DashboardContent() {
   );
 
   const monthlySummary = useMemo(() => {
-    const now = new Date();
-    return calculateMonthlySummary(transactions, now.getMonth(), now.getFullYear());
+    return calculateMonthlySummary(transactions, getCurrentMonthMT(), getCurrentYearMT());
   }, [transactions]);
 
   // Chart data — derived from projection, only recomputed when projection changes
@@ -330,9 +330,9 @@ function DashboardContent() {
       <div className="chart-grid" style={{ marginBottom: '2rem' }}>
         {/* Balance Projection Chart */}
         <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: '600' }}>Balance Projection</h2>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
               {[30, 60, 90, 180, 365].map((d) => (
                 <button
                   key={d}
@@ -463,11 +463,7 @@ function DashboardContent() {
       </div>
 
       {/* Bottom Row: Recent Transactions + Accounts */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1.3fr 1fr',
-        gap: '1.5rem',
-      }}>
+      <div className="chart-grid">
         {/* Recent Transactions */}
         <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>

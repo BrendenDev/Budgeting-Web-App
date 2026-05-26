@@ -83,7 +83,7 @@ function AccountsContent() {
 
   return (
     <div className="page-container">
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Accounts</h1>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>

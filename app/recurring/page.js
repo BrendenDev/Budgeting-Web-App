@@ -8,6 +8,7 @@ import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
+import { getTodayMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, RULE_FREQUENCIES, TRANSACTION_TYPES } from '@/models/schemas';
 
 function RecurringContent() {
@@ -20,7 +21,7 @@ function RecurringContent() {
   const [editingRule, setEditingRule] = useState(null);
   const [form, setForm] = useState({
     name: '', amount: '', type: 'expense', category: 'Misc',
-    frequency: 'monthly', startDate: new Date().toISOString().split('T')[0],
+    frequency: 'monthly', startDate: getTodayMT(),
     endDate: '', accountId: '', description: '', isActive: true,
   });
   const [saving, setSaving] = useState(false);
@@ -52,7 +53,7 @@ function RecurringContent() {
     setEditingRule(null);
     setForm({
       name: '', amount: '', type: 'expense', category: 'Misc',
-      frequency: 'monthly', startDate: new Date().toISOString().split('T')[0],
+      frequency: 'monthly', startDate: getTodayMT(),
       endDate: '', accountId: accounts[0]?._id || '', description: '', isActive: true,
     });
     setShowModal(true);
@@ -227,7 +228,7 @@ function RecurringContent() {
 
   return (
     <div className="page-container">
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Recurring</h1>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
