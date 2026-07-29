@@ -7,29 +7,18 @@ import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { formatCurrency } from '@/lib/calculation-engine';
 import { ACCOUNT_TYPES } from '@/models/schemas';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
+import { invalidateCache } from '@/lib/data-cache';
 
 function AccountsContent() {
   const { user } = useUser();
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [form, setForm] = useState({ name: '', type: 'checking', balance: '', institution: '' });
   const [saving, setSaving] = useState(false);
 
-  const fetchAccounts = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const res = await fetch(`/api/accounts?userId=${user.id}`);
-      const data = await res.json();
-      setAccounts(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-    }
-    setLoading(false);
-  }, [user?.id]);
-
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
+  const { data: accounts = [], loading, refresh: refreshAccounts } = useCachedFetch(accountsUrl, { ttl: 60000 });
 
   const openCreate = () => {
     setEditingAccount(null);
@@ -61,7 +50,8 @@ function AccountsContent() {
         });
       }
       setShowModal(false);
-      fetchAccounts();
+      invalidateCache('/api/accounts');
+      refreshAccounts();
     } catch (e) {
       console.error(e);
     }
@@ -71,7 +61,8 @@ function AccountsContent() {
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this account?')) return;
     await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
-    fetchAccounts();
+    invalidateCache('/api/accounts');
+    refreshAccounts();
   };
 
   const typeIcons = {

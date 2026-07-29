@@ -1,6 +1,8 @@
 // Data schemas and validation for Budget App
 // All records include userId for future auth compatibility
 
+import { parseDateSafe } from '@/lib/date-utils';
+
 export const ACCOUNT_TYPES = ['checking', 'savings', 'credit', 'investment', 'cash', 'other'];
 export const TRANSACTION_TYPES = ['income', 'expense', 'transfer'];
 export const RULE_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
@@ -43,15 +45,6 @@ export function validateRule(data) {
   return { valid: errors.length === 0, errors };
 }
 
-export function validateBudget(data) {
-  const errors = [];
-  if (!data.category || data.category.trim().length === 0) errors.push('Category is required');
-  if (!data.monthlyLimit || isNaN(Number(data.monthlyLimit)) || Number(data.monthlyLimit) <= 0) {
-    errors.push('Monthly limit must be a positive number');
-  }
-  return { valid: errors.length === 0, errors };
-}
-
 export function createAccountDoc(data, userId) {
   return {
     userId,
@@ -71,7 +64,7 @@ export function createTransactionDoc(data, userId) {
     amount: Number(data.amount),
     description: data.description.trim(),
     category: data.category || 'Miscellaneous',
-    date: new Date(data.date),
+    date: parseDateSafe(data.date),
     type: data.type,
     isRecurring: data.isRecurring || false,
     ruleId: data.ruleId || null,
@@ -88,23 +81,12 @@ export function createRuleDoc(data, userId) {
     amount: Number(data.amount),
     category: data.category || 'Misc',
     frequency: data.frequency,
-    startDate: new Date(data.startDate),
-    endDate: data.endDate ? new Date(data.endDate) : null,
+    startDate: parseDateSafe(data.startDate),
+    endDate: data.endDate ? parseDateSafe(data.endDate) : null,
     accountId: data.accountId || null,
     type: data.type,
     description: data.description?.trim() || '',
     isActive: data.isActive !== false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-}
-
-export function createBudgetDoc(data, userId) {
-  return {
-    userId,
-    category: data.category.trim(),
-    monthlyLimit: Number(data.monthlyLimit),
-    period: data.period || 'monthly',
     createdAt: new Date(),
     updatedAt: new Date(),
   };

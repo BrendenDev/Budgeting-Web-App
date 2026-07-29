@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
 import { validateTransaction, createTransactionDoc } from '@/models/schemas';
+import { parseDateSafe } from '@/lib/date-utils';
 
 export async function GET(request) {
   try {
@@ -23,8 +25,18 @@ export async function GET(request) {
     if (type) filter.type = type;
     if (startDate || endDate) {
       filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      // Use parseDateSafe to create noon-UTC dates. For $gte, start of day;
+      // for $lte, end of day — but since all DB dates are at noon UTC,
+      // noon-to-noon comparisons work correctly.
+      if (startDate) filter.date.$gte = parseDateSafe(startDate);
+      if (endDate) {
+        // Add 12 hours to make $lte inclusive of the end date at noon
+        const end = parseDateSafe(endDate);
+        if (end) {
+          end.setUTCHours(23, 59, 59, 999);
+          filter.date.$lte = end;
+        }
+      }
     }
 
     const db = await getDb();
@@ -34,7 +46,9 @@ export async function GET(request) {
       .limit(limit)
       .toArray();
 
-    return NextResponse.json(transactions);
+    return NextResponse.json(transactions, {
+      headers: { 'Cache-Control': 'private, max-age=0, stale-while-revalidate=30' },
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 });
   }
@@ -60,7 +74,7 @@ export async function POST(request) {
     // Update account balance
     const amount = doc.type === 'income' ? doc.amount : -doc.amount;
     await db.collection('accounts').updateOne(
-      { _id: new (await import('mongodb')).ObjectId(doc.accountId) },
+      { _id: new ObjectId(doc.accountId) },
       { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
     );
 

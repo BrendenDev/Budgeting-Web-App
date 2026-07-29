@@ -2,26 +2,39 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useUser } from '@/lib/auth-context';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
+import { invalidateCache } from '@/lib/data-cache';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { useDialog } from '@/components/ConfirmDialog';
 import CategoryPicker from '@/components/CategoryPicker';
-import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor } from '@/lib/calculation-engine';
-import { getTodayMT, getCurrentMonthMT, getCurrentYearMT } from '@/lib/date-utils';
+import TransactionExplorer from '@/components/TransactionExplorer';
+import SpendingCalendar from '@/components/SpendingCalendar';
+import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor, calculateSpendingPacing, calculateSavingsRate, calculateDailyBurnRate, calculateMonthComparison } from '@/lib/calculation-engine';
+import { getTodayMT, getCurrentMonthMT, getCurrentYearMT, toDateStringMT } from '@/lib/date-utils';
 import { ACCOUNT_TYPES, EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function DashboardContent() {
   const { user } = useUser();
   const { alert: showAlert } = useDialog();
-  const [accounts, setAccounts] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [rules, setRules] = useState([]);
-  const [budgets, setBudgets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [projectionDays, setProjectionDays] = useState(90);
   const [syncStatus, setSyncStatus] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(getCurrentMonthMT());
+  const [calendarYear, setCalendarYear] = useState(getCurrentYearMT());
+  const [hideRecurring, setHideRecurring] = useState(false);
+
+  // Cached data fetches — shared across pages, revalidate on focus
+  const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
+  const txUrl = user?.id ? `/api/transactions?userId=${user.id}&limit=500` : null;
+  const rulesUrl = user?.id ? `/api/recurring?userId=${user.id}` : null;
+  const { data: accounts, loading: accLoading, refresh: refreshAccounts } = useCachedFetch(accountsUrl, { ttl: 60000 });
+  const { data: transactions, loading: txLoading, refresh: refreshTransactions } = useCachedFetch(txUrl, { ttl: 30000 });
+  const { data: rules, loading: rulesLoading, refresh: refreshRules } = useCachedFetch(rulesUrl, { ttl: 60000 });
+  const loading = accLoading || txLoading || rulesLoading;
 
   // Quick-add transaction state
   const [quickForm, setQuickForm] = useState({
@@ -30,6 +43,13 @@ function DashboardContent() {
   });
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickSuccess, setQuickSuccess] = useState(false);
+
+  // Auto-select first account for quick-add
+  useEffect(() => {
+    if (accounts.length > 0 && !quickForm.accountId) {
+      setQuickForm(prev => ({ ...prev, accountId: accounts[0]._id }));
+    }
+  }, [accounts]);
 
   const handleQuickAdd = async (e) => {
     e.preventDefault();
@@ -44,40 +64,15 @@ function DashboardContent() {
         setQuickForm({ description: '', amount: '', type: quickForm.type, category: quickForm.type === 'income' ? 'Work' : 'Misc', date: getTodayMT(), accountId: quickForm.accountId });
         setQuickSuccess(true);
         setTimeout(() => setQuickSuccess(false), 2000);
-        fetchData();
+        invalidateCache('/api/transactions');
+        invalidateCache('/api/accounts');
+        refreshTransactions();
+        refreshAccounts();
       }
     } catch (err) { console.error(err); }
     setQuickSaving(false);
   };
 
-  const fetchData = useCallback(async () => {
-    if (!user?.id) return;
-    setLoading(true);
-    try {
-      const [accRes, txRes, rulesRes, budgetRes] = await Promise.all([
-        fetch(`/api/accounts?userId=${user.id}`),
-        fetch(`/api/transactions?userId=${user.id}&limit=200`),
-        fetch(`/api/recurring?userId=${user.id}`),
-        fetch(`/api/budgets?userId=${user.id}`),
-      ]);
-      const accData = await accRes.json();
-      const txData = await txRes.json();
-      const rulesData = await rulesRes.json();
-      const budgetData = await budgetRes.json();
-      const safeAccounts = Array.isArray(accData) ? accData : [];
-      setAccounts(safeAccounts);
-      setTransactions(Array.isArray(txData) ? txData : []);
-      setRules(Array.isArray(rulesData) ? rulesData : []);
-      setBudgets(Array.isArray(budgetData) ? budgetData : []);
-      // Auto-select first account for quick-add if none selected
-      if (safeAccounts.length > 0 && !quickForm.accountId) {
-        setQuickForm(prev => ({ ...prev, accountId: safeAccounts[0]._id }));
-      }
-    } catch (e) {
-      console.error('Failed to fetch data:', e);
-    }
-    setLoading(false);
-  }, [user?.id]);
 
   // Process recurring rules on mount, then fetch data
   useEffect(() => {
@@ -109,12 +104,17 @@ function DashboardContent() {
       }
 
       // Then fetch all data (with newly created transactions included)
-      if (!cancelled) await fetchData();
+      if (!cancelled) {
+        invalidateCache();
+        refreshAccounts();
+        refreshTransactions();
+        refreshRules();
+      }
     }
 
     syncAndFetch();
     return () => { cancelled = true; };
-  }, [user?.id, fetchData]);
+  }, [user?.id]);
 
   // Projections — only recompute when dependencies change, not on every render
   const projection = useMemo(
@@ -148,15 +148,46 @@ function DashboardContent() {
     [transactions]
   );
 
-  // Category pie data — derived from monthlySummary
-  const pieData = useMemo(
-    () => monthlySummary.categoryBreakdown.slice(0, 8).map((c, i) => ({
-      name: c.category,
-      value: c.amount,
-      fill: getCategoryColor(i),
-    })),
-    [monthlySummary]
-  );
+  // Spending pacing uses the calendar's selected month (not always current month)
+  const calendarTransactions = useMemo(() => {
+    if (!hideRecurring) return transactions;
+    return transactions.filter(tx => !tx.isRecurring);
+  }, [transactions, hideRecurring]);
+
+  const spendingPacing = useMemo(() => {
+    return calculateSpendingPacing(calendarTransactions, calendarMonth, calendarYear);
+  }, [calendarTransactions, calendarMonth, calendarYear]);
+
+  // Convert pacing data to day -> daily amount map for calendar
+  const dailySpending = useMemo(() => {
+    const map = {};
+    spendingPacing.forEach((entry, i) => {
+      const prev = i > 0 ? spendingPacing[i - 1].cumulative : 0;
+      const daily = entry.cumulative - prev;
+      if (daily > 0) map[entry.day] = Number(daily.toFixed(2));
+    });
+    return map;
+  }, [spendingPacing]);
+
+  // Build the date string for selected day drill-down
+  const selectedDayDateStr = useMemo(() => {
+    if (!selectedDay) return null;
+    const m = calendarMonth + 1;
+    const y = calendarYear;
+    return `${y}-${String(m).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+  }, [selectedDay, calendarMonth, calendarYear]);
+
+  const savingsRate = useMemo(() => {
+    return calculateSavingsRate(monthlySummary.income, monthlySummary.expenses);
+  }, [monthlySummary]);
+
+  const burnRate = useMemo(() => {
+    return calculateDailyBurnRate(transactions, getCurrentMonthMT(), getCurrentYearMT());
+  }, [transactions]);
+
+  const monthComparison = useMemo(() => {
+    return calculateMonthComparison(transactions, getCurrentMonthMT(), getCurrentYearMT());
+  }, [transactions]);
 
   if (loading) {
     return (
@@ -283,45 +314,37 @@ function DashboardContent() {
 
         <div className="glass-card stat-card-indigo" style={{ padding: '1.25rem 1.5rem' }}>
           <p style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            Projected ({projectionDays}d)
+            Cash Flow
           </p>
-          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: 'var(--color-accent-indigo-light)' }}>
-            {formatCurrency(projection.projectedBalance)}
+          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: monthlySummary.net >= 0 ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)' }}>
+            {formatCurrency(monthlySummary.net)}
           </p>
-          <p style={{
-            fontSize: '0.75rem',
-            marginTop: '0.25rem',
-            color: projection.netCashFlow >= 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-rose)',
-          }}>
-            {projection.netCashFlow >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(projection.netCashFlow))} net
+          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+            ↑ {formatCurrency(monthlySummary.income)} income · ↓ {formatCurrency(monthlySummary.expenses)} expenses
           </p>
         </div>
 
         <div className="glass-card stat-card-rose" style={{ padding: '1.25rem 1.5rem' }}>
           <p style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            Monthly Expenses
+            Savings Rate
           </p>
-          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: 'var(--color-accent-rose-light)' }}>
-            {formatCurrency(monthlySummary.expenses)}
+          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: savingsRate.band === 'red' ? 'var(--color-accent-rose-light)' : savingsRate.band === 'amber' ? 'var(--color-accent-amber-light)' : 'var(--color-accent-emerald-light)' }}>
+            {savingsRate.rate}%
           </p>
           <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-            {monthlySummary.expenseCount} expense{monthlySummary.expenseCount !== 1 ? 's' : ''} this month
+            Of monthly income saved
           </p>
         </div>
 
         <div className="glass-card stat-card-amber" style={{ padding: '1.25rem 1.5rem' }}>
           <p style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            Monthly Income
+            Daily Burn Rate
           </p>
-          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: 'var(--color-accent-amber-light)' }}>
-            {formatCurrency(monthlySummary.income)}
+          <p style={{ fontSize: '1.6rem', fontWeight: '700', color: 'var(--color-accent-rose-light)' }}>
+            {formatCurrency(burnRate.dailyAvg)}
           </p>
-          <p style={{
-            fontSize: '0.75rem',
-            marginTop: '0.25rem',
-            color: monthlySummary.net >= 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-rose)',
-          }}>
-            Net: {formatCurrency(monthlySummary.net)}
+          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+            ~{formatCurrency(burnRate.projected)} projected this month
           </p>
         </div>
       </div>
@@ -404,52 +427,90 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* Category Breakdown */}
+        {/* Spending Calendar */}
+        <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: '600', margin: 0 }}>Daily Spending</h2>
+            <label className="calendar-toggle">
+              <input
+                type="checkbox"
+                checked={hideRecurring}
+                onChange={(e) => setHideRecurring(e.target.checked)}
+              />
+              <span className="calendar-toggle-label">Hide recurring</span>
+            </label>
+          </div>
+          <SpendingCalendar
+            dailySpending={dailySpending}
+            selectedDay={selectedDay}
+            month={calendarMonth}
+            year={calendarYear}
+            onMonthChange={(m, y) => { setCalendarMonth(m); setCalendarYear(y); setSelectedDay(null); }}
+            onDayClick={(day) => setSelectedDay(selectedDay === day ? null : day)}
+          />
+          {selectedDay && (
+            <div className="calendar-drilldown">
+              <TransactionExplorer
+                transactions={calendarTransactions.filter(tx => {
+                  if (!selectedDayDateStr) return false;
+                  return toDateStringMT(tx.date) === selectedDayDateStr;
+                })}
+                accounts={accounts}
+                initialDateRange="all"
+                compact={true}
+                title={new Date(calendarYear, calendarMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                onClose={() => setSelectedDay(null)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="chart-grid" style={{ marginBottom: '2rem' }}>
         <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1.25rem' }}>Spending by Category</h2>
-          {pieData.length > 0 ? (
+          {monthlySummary.categoryBreakdown.length > 0 ? (
             <>
-              <div style={{ height: '180px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
+              <div className="category-bars">
+                {monthlySummary.categoryBreakdown.map((c, i) => {
+                  const pct = monthlySummary.expenses > 0 ? (c.amount / monthlySummary.expenses * 100) : 0;
+                  const color = getCategoryColor(i);
+                  const isActive = selectedCategory === c.category;
+                  return (
+                    <div
+                      key={c.category}
+                      className={`category-bar-item ${isActive ? 'active' : ''}`}
+                      onClick={() => setSelectedCategory(isActive ? null : c.category)}
                     >
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        background: '#1a2235',
-                        border: '1px solid #2a3448',
-                        borderRadius: '8px',
-                        fontSize: '0.8rem',
-                      }}
-                      formatter={(value) => formatCurrency(value)}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
-                {pieData.slice(0, 5).map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.fill }} />
-                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>{c.name}</span>
+                      <div className="category-bar-dot" style={{ background: color }} />
+                      <div className="category-bar-info">
+                        <div className="category-bar-label-row">
+                          <span className="category-bar-name">{c.category}</span>
+                          <span className="category-bar-amount">{formatCurrency(c.amount)}</span>
+                        </div>
+                        <div className="category-bar-track">
+                          <div className="category-bar-fill" style={{ width: `${pct}%`, background: color }} />
+                        </div>
+                      </div>
+                      <span className="category-bar-pct">{pct.toFixed(0)}%</span>
                     </div>
-                    <span style={{ fontSize: '0.8rem', fontWeight: '600', fontFamily: 'var(--font-mono)' }}>
-                      {formatCurrency(c.value)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              {selectedCategory && (
+                <div className="category-drilldown">
+                  <TransactionExplorer
+                    transactions={transactions}
+                    accounts={accounts}
+                    initialCategory={selectedCategory}
+                    initialDateRange="this-month"
+                    compact={true}
+                    title={selectedCategory}
+                    onClose={() => setSelectedCategory(null)}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
@@ -459,6 +520,87 @@ function DashboardContent() {
               </div>
             </div>
           )}
+        </div>
+
+        <div className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1.25rem' }}>Month vs Last Month</h2>
+          <div className="mom-comparison">
+            {/* Expenses comparison */}
+            <div>
+              <p className="mom-section-title">Expenses</p>
+              <div className="mom-bar-group">
+                <div className="mom-bar-row">
+                  <span className="mom-bar-label">This month</span>
+                  <div className="mom-bar-track">
+                    <div className="mom-bar-fill" style={{
+                      width: `${Math.max(5, Math.min(100, monthComparison.lastMonth.expenses > 0 ? (monthComparison.thisMonth.expenses / monthComparison.lastMonth.expenses * 100) : (monthComparison.thisMonth.expenses > 0 ? 100 : 5)))}%`,
+                      background: 'var(--color-accent-rose)',
+                    }}>
+                      <span className="mom-bar-value">{formatCurrency(monthComparison.thisMonth.expenses)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mom-bar-row">
+                  <span className="mom-bar-label">Last month</span>
+                  <div className="mom-bar-track">
+                    <div className="mom-bar-fill" style={{
+                      width: `${monthComparison.lastMonth.expenses > 0 ? 100 : 5}%`,
+                      background: 'rgba(244, 63, 94, 0.4)',
+                    }}>
+                      <span className="mom-bar-value">{formatCurrency(monthComparison.lastMonth.expenses)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {monthComparison.deltas.expenses !== 0 && (
+                <div className="mom-delta" style={{
+                  marginTop: '0.5rem',
+                  background: monthComparison.deltas.expenses <= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                  color: monthComparison.deltas.expenses <= 0 ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
+                }}>
+                  {monthComparison.deltas.expenses > 0 ? '↑' : '↓'} {Math.abs(monthComparison.deltas.expenses)}% vs last month
+                </div>
+              )}
+            </div>
+
+            {/* Income comparison */}
+            <div>
+              <p className="mom-section-title">Income</p>
+              <div className="mom-bar-group">
+                <div className="mom-bar-row">
+                  <span className="mom-bar-label">This month</span>
+                  <div className="mom-bar-track">
+                    <div className="mom-bar-fill" style={{
+                      width: `${Math.max(5, Math.min(100, monthComparison.lastMonth.income > 0 ? (monthComparison.thisMonth.income / monthComparison.lastMonth.income * 100) : (monthComparison.thisMonth.income > 0 ? 100 : 5)))}%`,
+                      background: 'var(--color-accent-emerald)',
+                    }}>
+                      <span className="mom-bar-value">{formatCurrency(monthComparison.thisMonth.income)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mom-bar-row">
+                  <span className="mom-bar-label">Last month</span>
+                  <div className="mom-bar-track">
+                    <div className="mom-bar-fill" style={{
+                      width: `${monthComparison.lastMonth.income > 0 ? 100 : 5}%`,
+                      background: 'rgba(16, 185, 129, 0.4)',
+                    }}>
+                      <span className="mom-bar-value">{formatCurrency(monthComparison.lastMonth.income)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {monthComparison.deltas.income !== 0 && (
+                <div className="mom-delta" style={{
+                  marginTop: '0.5rem',
+                  background: monthComparison.deltas.income >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+                  color: monthComparison.deltas.income >= 0 ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
+                }}>
+                  {monthComparison.deltas.income >= 0 ? '↑' : '↓'} {Math.abs(monthComparison.deltas.income)}% vs last month
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

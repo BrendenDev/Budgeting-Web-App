@@ -57,8 +57,9 @@ export async function POST(request) {
 }
 
 async function generateSnapshot(db, userId, month, year) {
-  const startDate = new Date(year, month, 1);
-  const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  // Use UTC boundaries to match noon-UTC dates in the DB
+  const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+  const endDate = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
   // Fetch transactions for the month
   const transactions = await db.collection('transactions')

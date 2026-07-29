@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { parseDateSafe } from '@/lib/date-utils';
 
 export async function POST(request) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request) {
       amount: Number(tx.amount) || 0,
       description: (tx.description || '').trim(),
       category: tx.category || 'Miscellaneous',
-      date: new Date(tx.date),
+      date: parseDateSafe(tx.date),
       type: tx.type || (Number(tx.amount) >= 0 ? 'income' : 'expense'),
       isRecurring: false,
       ruleId: null,

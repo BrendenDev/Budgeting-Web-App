@@ -104,9 +104,9 @@ function ReportsContent() {
   };
 
   return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
+    <div className="page-container">
       {/* Header */}
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Reports</h1>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
@@ -152,7 +152,7 @@ function ReportsContent() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        <div className="chart-grid">
           {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)' }} />)}
         </div>
       ) : snapshots.length === 0 ? (
@@ -172,7 +172,7 @@ function ReportsContent() {
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
               {/* Summary Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '2rem' }}>
+              <div className="stat-grid" style={{ marginBottom: '2rem' }}>
                 <div className="glass-card stat-card-emerald" style={{ padding: '1.25rem 1.5rem' }}>
                   <p style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Avg Monthly Income</p>
                   <p style={{ fontSize: '1.4rem', fontWeight: '700', color: 'var(--color-accent-emerald-light)' }}>{formatCurrency(avgIncome)}</p>
@@ -221,7 +221,7 @@ function ReportsContent() {
               </div>
 
               {/* Net Savings Bar Chart + Category Donut */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1.5rem' }}>
+              <div className="chart-grid">
                 <div className="glass-card" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1.25rem' }}>Net Savings by Month</h2>
                   <div style={{ height: '250px' }}>
@@ -295,7 +295,7 @@ function ReportsContent() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div className="chart-grid">
                 <div className="glass-card" style={{ padding: '1.5rem' }}>
                   <h2 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1.25rem' }}>Income Trend</h2>
                   <div style={{ height: '250px' }}>

@@ -1,32 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-
-const TIMEZONE = 'America/Denver';
-
-function parseDateSafe(dateInput) {
-  if (!dateInput) return null;
-  let str;
-  if (typeof dateInput === 'string') {
-    str = dateInput.split('T')[0];
-  } else if (dateInput instanceof Date) {
-    str = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(dateInput);
-  } else {
-    return null;
-  }
-  const [y, m, d] = str.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-}
-
-function toDateStringMT(dateInput) {
-  if (!dateInput) return '';
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(d);
-}
-
-function getTodayMT() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
-}
+import { getTodayMT, parseDateSafe, toDateStringMT } from '@/lib/date-utils';
 
 /**
  * GET /api/recurring/[id]/occurrences?userId=xxx

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { parseDateSafe } from '@/lib/date-utils';
 
 export async function GET(request, { params }) {
   try {
@@ -42,7 +43,7 @@ export async function PUT(request, { params }) {
       description: data.description?.trim() || oldTx.description,
       amount: Number(data.amount) || oldTx.amount,
       category: data.category || oldTx.category,
-      date: data.date ? new Date(data.date) : oldTx.date,
+      date: data.date ? parseDateSafe(data.date) : oldTx.date,
       type: data.type || oldTx.type,
       accountId: data.accountId || oldTx.accountId,
       notes: data.notes?.trim() ?? oldTx.notes,

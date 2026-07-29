@@ -1,34 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
-
-const TIMEZONE = 'America/Denver';
-
-/** Get today's YYYY-MM-DD in Mountain Time */
-function getTodayMT() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
-}
-
-/** Parse a date string/Date into a noon-UTC Date to avoid timezone boundary issues */
-function parseDateSafe(dateInput) {
-  if (!dateInput) return null;
-  let str;
-  if (typeof dateInput === 'string') {
-    str = dateInput.split('T')[0];
-  } else if (dateInput instanceof Date) {
-    str = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(dateInput);
-  } else {
-    return null;
-  }
-  const [y, m, d] = str.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-}
-
-/** Format a Date to YYYY-MM-DD in Mountain Time */
-function toDateStringMT(dateInput) {
-  if (!dateInput) return '';
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(d);
-}
+import { ObjectId } from 'mongodb';
+import { getTodayMT, parseDateSafe, toDateStringMT } from '@/lib/date-utils';
 
 /**
  * POST /api/recurring/process
@@ -206,7 +179,6 @@ export async function POST(request) {
     }
 
     // Apply all balance updates
-    const { ObjectId } = await import('mongodb');
     for (const [accountId, delta] of Object.entries(balanceUpdates)) {
       try {
         await db.collection('accounts').updateOne(

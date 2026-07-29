@@ -8,15 +8,14 @@ import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
-import { getTodayMT } from '@/lib/date-utils';
+import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, RULE_FREQUENCIES, TRANSACTION_TYPES } from '@/models/schemas';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
+import { invalidateCache } from '@/lib/data-cache';
 
 function RecurringContent() {
   const { user } = useUser();
   const { confirm, alert: showAlert } = useDialog();
-  const [rules, setRules] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [form, setForm] = useState({
@@ -34,20 +33,11 @@ function RecurringContent() {
   const [occLoading, setOccLoading] = useState(false);
   const [reinstating, setReinstating] = useState(null);
 
-  const fetchData = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const [rulesRes, accRes] = await Promise.all([
-        fetch(`/api/recurring?userId=${user.id}`),
-        fetch(`/api/accounts?userId=${user.id}`),
-      ]);
-      setRules(await rulesRes.json());
-      setAccounts(await accRes.json());
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  }, [user?.id]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const rulesUrl = user?.id ? `/api/recurring?userId=${user.id}` : null;
+  const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
+  const { data: rules, loading: rulesLoading, refresh: refreshRules } = useCachedFetch(rulesUrl, { ttl: 60000 });
+  const { data: accounts, loading: accLoading, refresh: refreshAccounts } = useCachedFetch(accountsUrl, { ttl: 60000 });
+  const loading = rulesLoading || accLoading;
 
   const openCreate = () => {
     setEditingRule(null);
@@ -64,8 +54,8 @@ function RecurringContent() {
     setForm({
       name: rule.name, amount: String(rule.amount), type: rule.type,
       category: rule.category, frequency: rule.frequency,
-      startDate: new Date(rule.startDate).toISOString().split('T')[0],
-      endDate: rule.endDate ? new Date(rule.endDate).toISOString().split('T')[0] : '',
+      startDate: toDateStringMT(rule.startDate),
+      endDate: rule.endDate ? toDateStringMT(rule.endDate) : '',
       accountId: rule.accountId || '', description: rule.description || '', isActive: rule.isActive,
     });
     setShowModal(true);
@@ -94,7 +84,10 @@ function RecurringContent() {
         body: JSON.stringify({ userId: user.id }),
       });
       setShowModal(false);
-      fetchData();
+      invalidateCache('/api/recurring');
+      invalidateCache('/api/transactions');
+      invalidateCache('/api/accounts');
+      refreshRules();
     } catch (e) { console.error(e); }
     setSaving(false);
   };
@@ -112,7 +105,10 @@ function RecurringContent() {
     });
     if (!ok) return;
     await fetch(`/api/recurring/${rule._id}`, { method: 'DELETE' });
-    fetchData();
+    invalidateCache('/api/recurring');
+    invalidateCache('/api/transactions');
+    invalidateCache('/api/accounts');
+    refreshRules();
   };
 
   const handleUndo = async (rule) => {
@@ -153,7 +149,10 @@ function RecurringContent() {
         variant: 'danger',
       });
     }
-    fetchData();
+    invalidateCache('/api/recurring');
+    invalidateCache('/api/transactions');
+    invalidateCache('/api/accounts');
+    refreshRules();
   };
 
   const toggleActive = async (rule) => {
@@ -161,7 +160,8 @@ function RecurringContent() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive: !rule.isActive }),
     });
-    fetchData();
+    invalidateCache('/api/recurring');
+    refreshRules();
   };
 
   const categories = form.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
@@ -220,7 +220,10 @@ function RecurringContent() {
     try {
       await fetch(`/api/transactions/${occ.transactionId}`, { method: 'DELETE' });
       await openOccurrences(occRule);
-      fetchData();
+      invalidateCache('/api/recurring');
+      invalidateCache('/api/transactions');
+      invalidateCache('/api/accounts');
+      refreshRules();
     } catch (e) {
       console.error(e);
     }
@@ -489,7 +492,7 @@ function RecurringContent() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-              <button className="btn-secondary" onClick={() => { setShowOccurrences(false); fetchData(); }}>Close</button>
+              <button className="btn-secondary" onClick={() => { setShowOccurrences(false); refreshRules(); }}>Close</button>
             </div>
           </>
         )}

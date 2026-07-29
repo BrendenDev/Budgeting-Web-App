@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { parseDateSafe, getTodayMT, toDateStringMT } from '@/lib/date-utils';
 
 export async function GET(request, { params }) {
   try {
@@ -37,8 +38,8 @@ export async function PUT(request, { params }) {
     if (data.amount) updateData.amount = Number(data.amount);
     if (data.category) updateData.category = data.category;
     if (data.frequency) updateData.frequency = data.frequency;
-    if (data.startDate) updateData.startDate = new Date(data.startDate);
-    if (data.endDate !== undefined) updateData.endDate = data.endDate ? new Date(data.endDate) : null;
+    if (data.startDate) updateData.startDate = parseDateSafe(data.startDate);
+    if (data.endDate !== undefined) updateData.endDate = data.endDate ? parseDateSafe(data.endDate) : null;
     if (data.accountId !== undefined) updateData.accountId = data.accountId;
     if (data.type) updateData.type = data.type;
     if (data.description !== undefined) updateData.description = data.description?.trim() || '';
@@ -46,9 +47,14 @@ export async function PUT(request, { params }) {
     updateData.updatedAt = new Date();
 
     // Detect if dates, frequency, amount, or type changed — requires recalculation
+    const oldStartStr = toDateStringMT(oldRule.startDate);
+    const newStartStr = data.startDate ? toDateStringMT(parseDateSafe(data.startDate)) : oldStartStr;
+    const oldEndStr = oldRule.endDate ? toDateStringMT(oldRule.endDate) : '';
+    const newEndStr = data.endDate !== undefined ? (data.endDate ? toDateStringMT(parseDateSafe(data.endDate)) : '') : oldEndStr;
+
     const needsRecalc =
-      (data.startDate && new Date(data.startDate).getTime() !== new Date(oldRule.startDate).getTime()) ||
-      (data.endDate !== undefined && String(data.endDate) !== String(oldRule.endDate ? new Date(oldRule.endDate).toISOString().split('T')[0] : '')) ||
+      (newStartStr !== oldStartStr) ||
+      (newEndStr !== oldEndStr) ||
       (data.frequency && data.frequency !== oldRule.frequency) ||
       (data.amount && Number(data.amount) !== oldRule.amount) ||
       (data.type && data.type !== oldRule.type) ||
@@ -97,10 +103,9 @@ export async function PUT(request, { params }) {
     // Step 3: If recalculation was needed, re-process the rule up to today
     if (needsRecalc && updateData.isActive !== false && oldRule.isActive !== false) {
       const updatedRule = await db.collection('rules').findOne({ _id: ruleObjectId });
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
+      const today = parseDateSafe(getTodayMT());
 
-      const occurrences = generateOccurrences(updatedRule, new Date(updatedRule.startDate), today);
+      const occurrences = generateOccurrences(updatedRule, parseDateSafe(updatedRule.startDate), today);
 
       if (occurrences.length > 0) {
         const txDocs = occurrences.map(date => ({
@@ -211,35 +216,55 @@ export async function DELETE(request, { params }) {
 }
 
 // ─── Helpers ────────────────────────────────────────────────
+// Uses the same noon-UTC pattern as the process route to ensure consistency.
 
 function generateOccurrences(rule, startDate, endDate) {
   const dates = [];
-  let current = new Date(rule.startDate);
-  current.setHours(0, 0, 0, 0);
+  let current = parseDateSafe(rule.startDate);
+  if (!current) return dates;
+
+  const anchorDay = current.getUTCDate();
 
   while (current < startDate) {
-    current = advanceDate(current, rule.frequency);
+    current = advanceDate(current, rule.frequency, anchorDay);
   }
 
   while (current <= endDate) {
-    if (rule.endDate && current > new Date(rule.endDate)) break;
+    if (rule.endDate) {
+      const ruleEnd = parseDateSafe(rule.endDate);
+      if (ruleEnd && current > ruleEnd) break;
+    }
     dates.push(new Date(current));
-    current = advanceDate(current, rule.frequency);
+    current = advanceDate(current, rule.frequency, anchorDay);
   }
 
   return dates;
 }
 
-function advanceDate(date, frequency) {
+function advanceDate(date, frequency, anchorDay) {
   const next = new Date(date);
   switch (frequency) {
-    case 'daily':     next.setDate(next.getDate() + 1); break;
-    case 'weekly':    next.setDate(next.getDate() + 7); break;
-    case 'biweekly':  next.setDate(next.getDate() + 14); break;
-    case 'monthly':   next.setMonth(next.getMonth() + 1); break;
-    case 'quarterly': next.setMonth(next.getMonth() + 3); break;
-    case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
-    default:          next.setMonth(next.getMonth() + 1);
+    case 'daily':     next.setUTCDate(next.getUTCDate() + 1); break;
+    case 'weekly':    next.setUTCDate(next.getUTCDate() + 7); break;
+    case 'biweekly':  next.setUTCDate(next.getUTCDate() + 14); break;
+    case 'monthly': {
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      if (anchorDay) {
+        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+        next.setUTCDate(Math.min(anchorDay, maxDay));
+      }
+      break;
+    }
+    case 'quarterly': {
+      next.setUTCMonth(next.getUTCMonth() + 3);
+      if (anchorDay) {
+        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+        next.setUTCDate(Math.min(anchorDay, maxDay));
+      }
+      break;
+    }
+    case 'yearly':    next.setUTCFullYear(next.getUTCFullYear() + 1); break;
+    default:          next.setUTCMonth(next.getUTCMonth() + 1);
   }
   return next;
 }

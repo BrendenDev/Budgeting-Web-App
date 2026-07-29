@@ -17,7 +17,9 @@ export async function GET(request) {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return NextResponse.json(rules);
+    return NextResponse.json(rules, {
+      headers: { 'Cache-Control': 'private, max-age=0, stale-while-revalidate=30' },
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch rules' }, { status: 500 });
   }
