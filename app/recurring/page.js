@@ -250,10 +250,13 @@ function RecurringContent() {
         </div>
       ) : rules.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {rules.map((rule) => (
+          {rules.map((rule) => {
+            const isEnded = rule.endDate && toDateStringMT(rule.endDate) < getTodayMT();
+            const isDimmed = rule.isActive === false || isEnded;
+            return (
             <div key={rule._id} className="glass-card animate-fade-in" style={{
               padding: '1.25rem 1.5rem',
-              opacity: rule.isActive === false ? 0.5 : 1,
+              opacity: isDimmed ? 0.5 : 1,
               transition: 'opacity 0.3s ease',
             }}>
               <div className="list-item-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -267,16 +270,32 @@ function RecurringContent() {
                     {rule.type === 'income' ? '📥' : '📤'}
                   </div>
                   <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => openOccurrences(rule)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{rule.name}</span>
                       <span className={`badge ${rule.type === 'income' ? 'badge-emerald' : 'badge-rose'}`}>
                         {rule.type}
                       </span>
                       <span className="badge badge-indigo">{freqLabel[rule.frequency]}</span>
+                      {isEnded && (
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase',
+                          padding: '0.15rem 0.5rem', borderRadius: '999px',
+                          background: 'rgba(148, 163, 184, 0.15)', color: 'var(--color-text-muted)',
+                          letterSpacing: '0.05em',
+                        }}>Ended</span>
+                      )}
+                      {rule.isActive === false && !isEnded && (
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase',
+                          padding: '0.15rem 0.5rem', borderRadius: '999px',
+                          background: 'rgba(251, 191, 36, 0.15)', color: 'var(--color-accent-amber)',
+                          letterSpacing: '0.05em',
+                        }}>Paused</span>
+                      )}
                     </div>
                     <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                       {rule.category} · {getAccountName(rule.accountId)} · Since {formatDate(rule.startDate)}
-                      {rule.endDate ? ` · Until ${formatDate(rule.endDate)}` : ''}
+                      {rule.endDate ? ` · ${isEnded ? 'Ended' : 'Until'} ${formatDate(rule.endDate)}` : ''}
                       <span style={{ color: 'var(--color-accent-indigo-light)', marginLeft: '0.5rem' }}>— click to view occurrences</span>
                     </p>
                   </div>
@@ -291,9 +310,9 @@ function RecurringContent() {
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
                     <button onClick={() => toggleActive(rule)} style={{
                       background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem',
-                      color: rule.isActive === false ? 'var(--color-text-muted)' : 'var(--color-accent-emerald)',
-                    }} title={rule.isActive === false ? 'Enable' : 'Disable'}>
-                      {rule.isActive === false ? '⏸️' : '▶️'}
+                      color: isDimmed ? 'var(--color-text-muted)' : 'var(--color-accent-emerald)',
+                    }} title={isEnded ? 'Rule has ended' : rule.isActive === false ? 'Enable' : 'Disable'}>
+                      {isEnded ? '⏹️' : rule.isActive === false ? '⏸️' : '▶️'}
                     </button>
                     <button onClick={() => handleUndo(rule)} style={{ background: 'transparent', border: 'none', color: 'var(--color-accent-amber)', cursor: 'pointer', fontSize: '0.85rem' }} title="Undo all generated transactions">↩️</button>
                     <button onClick={() => openEdit(rule)} style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✏️</button>
@@ -302,7 +321,8 @@ function RecurringContent() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
