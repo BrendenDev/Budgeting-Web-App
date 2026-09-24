@@ -46,11 +46,13 @@ export function validateRule(data) {
 }
 
 export function createAccountDoc(data, userId) {
+  const balance = Number(data.balance);
   return {
     userId,
     name: data.name.trim(),
     type: data.type,
-    balance: Number(data.balance),
+    balance,
+    initialBalance: balance,  // Preserved forever — never $inc'd
     institution: data.institution?.trim() || '',
     createdAt: new Date(),
     updatedAt: new Date(),

@@ -11,7 +11,7 @@ import { useDialog } from '@/components/ConfirmDialog';
 import CategoryPicker from '@/components/CategoryPicker';
 import TransactionExplorer from '@/components/TransactionExplorer';
 import SpendingCalendar from '@/components/SpendingCalendar';
-import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor, calculateSpendingPacing, calculateSavingsRate, calculateDailyBurnRate, calculateMonthComparison } from '@/lib/calculation-engine';
+import { formatCurrency, formatDate, projectBalances, getCategoryColor } from '@/lib/calculation-engine';
 import { getTodayMT, getCurrentMonthMT, getCurrentYearMT, toDateStringMT } from '@/lib/date-utils';
 import { ACCOUNT_TYPES, EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -29,12 +29,12 @@ function DashboardContent() {
 
   // Cached data fetches — shared across pages, revalidate on focus
   const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
-  const txUrl = user?.id ? `/api/transactions?userId=${user.id}&limit=500` : null;
+  const summaryUrl = user?.id ? `/api/dashboard/summary?userId=${user.id}&month=${getCurrentMonthMT()}&year=${getCurrentYearMT()}` : null;
   const rulesUrl = user?.id ? `/api/recurring?userId=${user.id}` : null;
   const { data: accounts, loading: accLoading, refresh: refreshAccounts } = useCachedFetch(accountsUrl, { ttl: 60000 });
-  const { data: transactions, loading: txLoading, refresh: refreshTransactions } = useCachedFetch(txUrl, { ttl: 30000 });
+  const { data: summary, loading: summaryLoading, refresh: refreshSummary } = useCachedFetch(summaryUrl, { ttl: 30000 });
   const { data: rules, loading: rulesLoading, refresh: refreshRules } = useCachedFetch(rulesUrl, { ttl: 60000 });
-  const loading = accLoading || txLoading || rulesLoading;
+  const loading = accLoading || summaryLoading || rulesLoading;
 
   // Quick-add transaction state
   const [quickForm, setQuickForm] = useState({
@@ -64,9 +64,9 @@ function DashboardContent() {
         setQuickForm({ description: '', amount: '', type: quickForm.type, category: quickForm.type === 'income' ? 'Work' : 'Misc', date: getTodayMT(), accountId: quickForm.accountId });
         setQuickSuccess(true);
         setTimeout(() => setQuickSuccess(false), 2000);
-        invalidateCache('/api/transactions');
+        invalidateCache('/api/dashboard');
         invalidateCache('/api/accounts');
-        refreshTransactions();
+        refreshSummary();
         refreshAccounts();
       }
     } catch (err) { console.error(err); }
@@ -107,7 +107,7 @@ function DashboardContent() {
       if (!cancelled) {
         invalidateCache();
         refreshAccounts();
-        refreshTransactions();
+        refreshSummary();
         refreshRules();
       }
     }
@@ -123,8 +123,32 @@ function DashboardContent() {
   );
 
   const monthlySummary = useMemo(() => {
-    return calculateMonthlySummary(transactions, getCurrentMonthMT(), getCurrentYearMT());
-  }, [transactions]);
+    if (!summary?.currentMonth) return { income: 0, expenses: 0, net: 0, categoryBreakdown: [] };
+    return summary.currentMonth;
+  }, [summary]);
+
+  const savingsRate = useMemo(() => {
+    if (!summary?.currentMonth) return { rate: 0, band: 'red' };
+    return { rate: summary.currentMonth.savingsRate, band: summary.currentMonth.savingsBand };
+  }, [summary]);
+
+  const burnRate = useMemo(() => {
+    if (!summary?.currentMonth) return { dailyAvg: 0, projected: 0 };
+    return { dailyAvg: summary.currentMonth.dailyBurnRate, projected: summary.currentMonth.projectedBurn };
+  }, [summary]);
+
+  const monthComparison = useMemo(() => {
+    if (!summary) return { thisMonth: { income: 0, expenses: 0, net: 0 }, lastMonth: { income: 0, expenses: 0, net: 0 }, deltas: { expenses: 0, income: 0 } };
+    return {
+      thisMonth: { income: summary.currentMonth.income, expenses: summary.currentMonth.expenses, net: summary.currentMonth.net },
+      lastMonth: summary.previousMonth,
+      deltas: summary.deltas,
+    };
+  }, [summary]);
+
+  const recentTx = useMemo(() => {
+    return summary?.recentTransactions || [];
+  }, [summary]);
 
   // Chart data — derived from projection, only recomputed when projection changes
   const chartData = useMemo(() => {
@@ -143,52 +167,100 @@ function DashboardContent() {
     [accounts]
   );
 
-  const recentTx = useMemo(
-    () => Array.isArray(transactions) ? transactions.slice(0, 5) : [],
-    [transactions]
-  );
+  const [calendarSpendingData, setCalendarSpendingData] = useState({});
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  
+  // Use summary data for current month, fetch on-demand for other months
+  useEffect(() => {
+    const curMonth = getCurrentMonthMT();
+    const curYear = getCurrentYearMT();
+    
+    if (calendarMonth === curMonth && calendarYear === curYear) {
+      // Current month — use summary data (already have it)
+      if (summary?.currentMonth?.dailySpending) {
+        let spending = summary.currentMonth.dailySpending;
+        // If hideRecurring is on, we can't filter server-side aggregated data,
+        // so fall back to on-demand fetch
+        if (hideRecurring) {
+          fetchCalendarData(calendarMonth, calendarYear, true);
+        } else {
+          setCalendarSpendingData(spending);
+        }
+      }
+    } else {
+      // Different month — fetch on demand
+      fetchCalendarData(calendarMonth, calendarYear, hideRecurring);
+    }
+  }, [calendarMonth, calendarYear, summary, hideRecurring]);
+  
+  async function fetchCalendarData(month, year, excludeRecurring) {
+    if (!user?.id) return;
+    setCalendarLoading(true);
+    try {
+      const m = month + 1; // API expects 1-indexed via date string
+      const startDate = `${year}-${String(m).padStart(2, '0')}-01`;
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const endDate = `${year}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+      const url = `/api/transactions?userId=${user.id}&startDate=${startDate}&endDate=${endDate}&limit=500`;
+      const res = await fetch(url);
+      const txns = await res.json();
+      const filtered = excludeRecurring ? txns.filter(tx => !tx.isRecurring) : txns;
+      
+      // Build daily spending map
+      const map = {};
+      filtered.filter(tx => tx.type === 'expense').forEach(tx => {
+        const dateStr = toDateStringMT(tx.date);
+        const day = parseInt(dateStr.split('-')[2], 10);
+        map[day] = (map[day] || 0) + Math.abs(tx.amount);
+      });
+      setCalendarSpendingData(map);
+    } catch (e) {
+      console.error('Calendar data fetch failed:', e);
+      setCalendarSpendingData({});
+    }
+    setCalendarLoading(false);
+  }
 
-  // Spending pacing uses the calendar's selected month (not always current month)
-  const calendarTransactions = useMemo(() => {
-    if (!hideRecurring) return transactions;
-    return transactions.filter(tx => !tx.isRecurring);
-  }, [transactions, hideRecurring]);
+  const [drilldownTransactions, setDrilldownTransactions] = useState([]);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+  
+  async function fetchDrilldownTransactions(dateStr) {
+    if (!user?.id || !dateStr) return;
+    setDrilldownLoading(true);
+    try {
+      const url = `/api/transactions?userId=${user.id}&startDate=${dateStr}&endDate=${dateStr}&limit=100`;
+      const res = await fetch(url);
+      const txns = await res.json();
+      setDrilldownTransactions(hideRecurring ? txns.filter(tx => !tx.isRecurring) : txns);
+    } catch (e) {
+      console.error('Drilldown fetch failed:', e);
+      setDrilldownTransactions([]);
+    }
+    setDrilldownLoading(false);
+  }
 
-  const spendingPacing = useMemo(() => {
-    return calculateSpendingPacing(calendarTransactions, calendarMonth, calendarYear);
-  }, [calendarTransactions, calendarMonth, calendarYear]);
-
-  // Convert pacing data to day -> daily amount map for calendar
-  const dailySpending = useMemo(() => {
-    const map = {};
-    spendingPacing.forEach((entry, i) => {
-      const prev = i > 0 ? spendingPacing[i - 1].cumulative : 0;
-      const daily = entry.cumulative - prev;
-      if (daily > 0) map[entry.day] = Number(daily.toFixed(2));
-    });
-    return map;
-  }, [spendingPacing]);
-
-  // Build the date string for selected day drill-down
-  const selectedDayDateStr = useMemo(() => {
-    if (!selectedDay) return null;
-    const m = calendarMonth + 1;
-    const y = calendarYear;
-    return `${y}-${String(m).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
-  }, [selectedDay, calendarMonth, calendarYear]);
-
-  const savingsRate = useMemo(() => {
-    return calculateSavingsRate(monthlySummary.income, monthlySummary.expenses);
-  }, [monthlySummary]);
-
-  const burnRate = useMemo(() => {
-    return calculateDailyBurnRate(transactions, getCurrentMonthMT(), getCurrentYearMT());
-  }, [transactions]);
-
-  const monthComparison = useMemo(() => {
-    return calculateMonthComparison(transactions, getCurrentMonthMT(), getCurrentYearMT());
-  }, [transactions]);
-
+  const [categoryTransactions, setCategoryTransactions] = useState([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  
+  async function fetchCategoryTransactions(category) {
+    if (!user?.id || !category) return;
+    setCategoryLoading(true);
+    try {
+      const curMonth = getCurrentMonthMT() + 1;
+      const curYear = getCurrentYearMT();
+      const startDate = `${curYear}-${String(curMonth).padStart(2, '0')}-01`;
+      const daysInMonth = new Date(curYear, curMonth, 0).getDate();
+      const endDate = `${curYear}-${String(curMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+      const url = `/api/transactions?userId=${user.id}&startDate=${startDate}&endDate=${endDate}&category=${encodeURIComponent(category)}&limit=200`;
+      const res = await fetch(url);
+      const txns = await res.json();
+      setCategoryTransactions(txns);
+    } catch (e) {
+      console.error('Category fetch failed:', e);
+      setCategoryTransactions([]);
+    }
+    setCategoryLoading(false);
+  }
   if (loading) {
     return (
       <div className="page-container">
@@ -441,25 +513,32 @@ function DashboardContent() {
             </label>
           </div>
           <SpendingCalendar
-            dailySpending={dailySpending}
+            dailySpending={calendarSpendingData}
             selectedDay={selectedDay}
             month={calendarMonth}
             year={calendarYear}
-            onMonthChange={(m, y) => { setCalendarMonth(m); setCalendarYear(y); setSelectedDay(null); }}
-            onDayClick={(day) => setSelectedDay(selectedDay === day ? null : day)}
+            onMonthChange={(m, y) => { setCalendarMonth(m); setCalendarYear(y); setSelectedDay(null); setDrilldownTransactions([]); }}
+            onDayClick={(day) => {
+              if (selectedDay === day) {
+                setSelectedDay(null);
+                setDrilldownTransactions([]);
+              } else {
+                setSelectedDay(day);
+                const m = calendarMonth + 1;
+                const dateStr = `${calendarYear}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                fetchDrilldownTransactions(dateStr);
+              }
+            }}
           />
           {selectedDay && (
             <div className="calendar-drilldown">
               <TransactionExplorer
-                transactions={calendarTransactions.filter(tx => {
-                  if (!selectedDayDateStr) return false;
-                  return toDateStringMT(tx.date) === selectedDayDateStr;
-                })}
+                transactions={drilldownTransactions}
                 accounts={accounts}
                 initialDateRange="all"
                 compact={true}
                 title={new Date(calendarYear, calendarMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                onClose={() => setSelectedDay(null)}
+                onClose={() => { setSelectedDay(null); setDrilldownTransactions([]); }}
               />
             </div>
           )}
@@ -481,7 +560,15 @@ function DashboardContent() {
                     <div
                       key={c.category}
                       className={`category-bar-item ${isActive ? 'active' : ''}`}
-                      onClick={() => setSelectedCategory(isActive ? null : c.category)}
+                      onClick={() => {
+                        if (isActive) {
+                          setSelectedCategory(null);
+                          setCategoryTransactions([]);
+                        } else {
+                          setSelectedCategory(c.category);
+                          fetchCategoryTransactions(c.category);
+                        }
+                      }}
                     >
                       <div className="category-bar-dot" style={{ background: color }} />
                       <div className="category-bar-info">
@@ -501,13 +588,13 @@ function DashboardContent() {
               {selectedCategory && (
                 <div className="category-drilldown">
                   <TransactionExplorer
-                    transactions={transactions}
+                    transactions={categoryTransactions}
                     accounts={accounts}
                     initialCategory={selectedCategory}
-                    initialDateRange="this-month"
+                    initialDateRange="all"
                     compact={true}
                     title={selectedCategory}
-                    onClose={() => setSelectedCategory(null)}
+                    onClose={() => { setSelectedCategory(null); setCategoryTransactions([]); }}
                   />
                 </div>
               )}

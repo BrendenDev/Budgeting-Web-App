@@ -63,18 +63,6 @@ const navItems = [
       </svg>
     ),
   },
-  {
-    label: 'Reports',
-    href: '/reports',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M3 17V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M7 17V3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M11 17V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M15 17V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
 ];
 
 export default function Sidebar() {

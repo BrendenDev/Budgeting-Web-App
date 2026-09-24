@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/lib/auth-context';
+import { useDialog } from '@/components/ConfirmDialog';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
@@ -12,10 +13,12 @@ import { invalidateCache } from '@/lib/data-cache';
 
 function AccountsContent() {
   const { user } = useUser();
+  const { alert: showAlert } = useDialog();
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [form, setForm] = useState({ name: '', type: 'checking', balance: '', institution: '' });
   const [saving, setSaving] = useState(false);
+  const [recalculating, setRecalculating] = useState(null); // accountId or 'all'
 
   const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
   const { data: accounts = [], loading, refresh: refreshAccounts } = useCachedFetch(accountsUrl, { ttl: 60000 });
@@ -65,6 +68,48 @@ function AccountsContent() {
     refreshAccounts();
   };
 
+  const handleRecalculate = async (accId, accName) => {
+    setRecalculating(accId);
+    try {
+      const res = await fetch(`/api/accounts/${accId}/recalculate`, { method: 'POST' });
+      const result = await res.json();
+      if (!res.ok) {
+        await showAlert(result.error || 'Recalculation failed');
+      } else if (result.driftDetected) {
+        await showAlert(`${accName} corrected: ${formatCurrency(result.previousBalance)} → ${formatCurrency(result.correctBalance)} (${result.delta >= 0 ? '+' : ''}${formatCurrency(result.delta)} drift)`);
+      } else {
+        await showAlert(`${accName}: Balance verified ✓ (${formatCurrency(result.correctBalance)})`);
+      }
+      invalidateCache('/api/accounts');
+      refreshAccounts();
+    } catch (e) {
+      await showAlert('Recalculation failed');
+    }
+    setRecalculating(null);
+  };
+
+  const handleRecalculateAll = async () => {
+    setRecalculating('all');
+    const results = [];
+    for (const acc of accounts) {
+      try {
+        const res = await fetch(`/api/accounts/${acc._id}/recalculate`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok) {
+          results.push(`${acc.name}: ${result.driftDetected ? `${formatCurrency(result.previousBalance)} → ${formatCurrency(result.correctBalance)}` : '✓ OK'}`);
+        } else {
+          results.push(`${acc.name}: Error — ${result.error}`);
+        }
+      } catch {
+        results.push(`${acc.name}: Error`);
+      }
+    }
+    invalidateCache('/api/accounts');
+    refreshAccounts();
+    await showAlert(results.join('\n'));
+    setRecalculating(null);
+  };
+
   const typeIcons = {
     checking: '🏦', savings: '💰', credit: '💳',
     investment: '📈', cash: '💵', other: '📁',
@@ -81,10 +126,21 @@ function AccountsContent() {
             Manage your financial accounts · Total: <span style={{ color: 'var(--color-accent-emerald-light)', fontWeight: '600', fontFamily: 'var(--font-mono)' }}>{formatCurrency(totalBalance)}</span>
           </p>
         </div>
-        <button className="btn-gradient" onClick={openCreate} id="add-account-btn">
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn-secondary"
+            onClick={handleRecalculateAll}
+            disabled={recalculating === 'all' || accounts.length === 0}
+            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title="Recalculate all account balances from transaction history"
+          >
+            {recalculating === 'all' ? '⏳ Recalculating...' : '🔄 Recalculate All'}
+          </button>
+          <button className="btn-gradient" onClick={openCreate} id="add-account-btn">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
           Add Account
         </button>
+        </div>
       </div>
 
       {loading ? (
@@ -112,6 +168,10 @@ function AccountsContent() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  <button onClick={() => handleRecalculate(acc._id, acc.name)} disabled={recalculating === acc._id} style={{
+                    background: 'transparent', border: 'none', color: recalculating === acc._id ? 'var(--color-accent-amber)' : 'var(--color-text-muted)',
+                    cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
+                  }} title="Recalculate balance from transactions">{recalculating === acc._id ? '⏳' : '🔄'}</button>
                   <button onClick={() => openEdit(acc)} style={{
                     background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
                     cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
