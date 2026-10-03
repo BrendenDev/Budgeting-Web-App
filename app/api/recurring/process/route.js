@@ -1,22 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getTodayMT, parseDateSafe, toDateStringMT } from '@/lib/date-utils';
+import { requireUserId } from '@/lib/auth';
+import { parseDateSafe, resolveClientToday, toDateStringMT } from '@/lib/date-utils';
+import { generateOccurrenceDates as generateOccurrences } from '@/lib/recurrence';
 
 /**
  * POST /api/recurring/process
  * Materializes all missed recurring rule occurrences into real transactions.
+ * Body: { today?: "YYYY-MM-DD" } — the browser's local date. Vercel servers
+ * run in UTC, which is already "tomorrow" for US users every evening.
  */
 export async function POST(request) {
   try {
-    const { userId } = await request.json();
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
+    const body = await request.json().catch(() => ({}));
 
     const db = await getDb();
-    const todayStr = getTodayMT();
-    const today = parseDateSafe(todayStr); // noon UTC of today in MT
+    const today = resolveClientToday(body.today); // noon UTC of the user's local today
 
     // Get all active rules for this user
     const rules = await db.collection('rules')
@@ -182,7 +185,7 @@ export async function POST(request) {
     for (const [accountId, delta] of Object.entries(balanceUpdates)) {
       try {
         await db.collection('accounts').updateOne(
-          { _id: new ObjectId(accountId) },
+          { _id: new ObjectId(accountId), userId },
           { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
         );
       } catch (e) {
@@ -202,12 +205,11 @@ export async function POST(request) {
   }
 }
 
-// GET /api/recurring/process?userId=xxx – get all occurrence trackers
-export async function GET(request) {
+// GET /api/recurring/process – get all occurrence trackers for the signed-in user
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    const { userId, error } = await requireUserId();
+    if (error) return error;
 
     const db = await getDb();
     const trackers = await db.collection('rule_occurrences')
@@ -222,61 +224,5 @@ export async function GET(request) {
   }
 }
 
-/**
- * Generate all occurrence dates for a rule within [startDate, endDate].
- * Uses noon-UTC dates and preserves anchor day-of-month.
- */
-function generateOccurrences(rule, startDate, endDate) {
-  const dates = [];
-  let current = parseDateSafe(rule.startDate);
-  if (!current) return dates;
-
-  const anchorDay = current.getUTCDate();
-
-  // Advance to the first occurrence on or after startDate
-  while (current < startDate) {
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  // Collect all occurrences up to endDate
-  while (current <= endDate) {
-    // Respect rule endDate
-    if (rule.endDate) {
-      const ruleEnd = parseDateSafe(rule.endDate);
-      if (ruleEnd && current > ruleEnd) break;
-    }
-
-    dates.push(new Date(current));
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  return dates;
-}
-
-function advanceDate(date, frequency, anchorDay) {
-  const next = new Date(date);
-  switch (frequency) {
-    case 'daily':     next.setUTCDate(next.getUTCDate() + 1); break;
-    case 'weekly':    next.setUTCDate(next.getUTCDate() + 7); break;
-    case 'biweekly':  next.setUTCDate(next.getUTCDate() + 14); break;
-    case 'monthly': {
-      next.setUTCMonth(next.getUTCMonth() + 1);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'quarterly': {
-      next.setUTCMonth(next.getUTCMonth() + 3);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'yearly':    next.setUTCFullYear(next.getUTCFullYear() + 1); break;
-    default:          next.setUTCMonth(next.getUTCMonth() + 1);
-  }
-  return next;
-}
+// Occurrence generation lives in lib/recurrence.js (shared with the other
+// recurring routes and the client-side projection engine).

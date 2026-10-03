@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { requireUserId } from '@/lib/auth';
 
 /**
  * POST /api/accounts/:id/recalculate
@@ -13,10 +14,15 @@ import { ObjectId } from 'mongodb';
  */
 export async function POST(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const db = await getDb();
 
-    const account = await db.collection('accounts').findOne({ _id: new ObjectId(id) });
+    // Ownership check. The transaction query below stays keyed on accountId
+    // alone (unchanged), so the computed balance is exactly what it was before.
+    const account = await db.collection('accounts').findOne({ _id: new ObjectId(id), userId });
     if (!account) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }

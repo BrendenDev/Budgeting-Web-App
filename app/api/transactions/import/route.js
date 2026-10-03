@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
+import { requireUserId } from '@/lib/auth';
+import { ownsAccount } from '@/lib/ownership';
 import { parseDateSafe } from '@/lib/date-utils';
 
 export async function POST(request) {
   try {
-    const { transactions, userId } = await request.json();
+    const { userId, error } = await requireUserId();
+    if (error) return error;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
+    const { transactions } = await request.json();
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
       return NextResponse.json({ error: 'transactions array is required and must not be empty' }, { status: 400 });
+    }
+
+    const db = await getDb();
+
+    // Verify every referenced account belongs to this user before inserting
+    // anything — a rejected import changes nothing.
+    const accountIds = [...new Set(transactions.map(tx => tx.accountId).filter(Boolean).map(String))];
+    for (const accountId of accountIds) {
+      if (!(await ownsAccount(db, accountId, userId))) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      }
     }
 
     // Validate and sanitize each transaction
@@ -20,7 +33,7 @@ export async function POST(request) {
       accountId: tx.accountId || null,
       amount: Number(tx.amount) || 0,
       description: (tx.description || '').trim(),
-      category: tx.category || 'Miscellaneous',
+      category: tx.category || 'Misc',
       date: parseDateSafe(tx.date),
       type: tx.type || (Number(tx.amount) >= 0 ? 'income' : 'expense'),
       isRecurring: false,
@@ -29,8 +42,6 @@ export async function POST(request) {
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
-
-    const db = await getDb();
 
     // Insert all transactions
     const result = await db.collection('transactions').insertMany(docs);
@@ -44,11 +55,10 @@ export async function POST(request) {
       }
     });
 
-    const { ObjectId } = await import('mongodb');
     for (const [accountId, delta] of Object.entries(balanceUpdates)) {
       try {
         await db.collection('accounts').updateOne(
-          { _id: new ObjectId(accountId) },
+          { _id: new ObjectId(accountId), userId },
           { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
         );
       } catch (e) {

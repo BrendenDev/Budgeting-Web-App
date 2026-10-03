@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { requireUserId } from '@/lib/auth';
+import { ownsAccount } from '@/lib/ownership';
 import { validateTransaction, createTransactionDoc } from '@/models/schemas';
 import { parseDateSafe } from '@/lib/date-utils';
 
 export async function GET(request) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const accountId = searchParams.get('accountId');
     const category = searchParams.get('category');
     const type = searchParams.get('type');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const limit = parseInt(searchParams.get('limit') || '100');
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
 
     const filter = { userId };
     if (accountId) filter.accountId = accountId;
@@ -56,6 +56,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const data = await request.json();
     const { valid, errors } = validateTransaction(data);
 
@@ -63,18 +66,21 @@ export async function POST(request) {
       return NextResponse.json({ errors }, { status: 400 });
     }
 
-    if (!data.userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+    const db = await getDb();
+
+    // Verify the account belongs to this user BEFORE inserting, so we never
+    // create a transaction whose balance update can't be applied.
+    if (!(await ownsAccount(db, data.accountId, userId))) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
-    const db = await getDb();
-    const doc = createTransactionDoc(data, data.userId);
+    const doc = createTransactionDoc(data, userId);
     const result = await db.collection('transactions').insertOne(doc);
 
     // Update account balance
     const amount = doc.type === 'income' ? doc.amount : -doc.amount;
     await db.collection('accounts').updateOne(
-      { _id: new ObjectId(doc.accountId) },
+      { _id: new ObjectId(doc.accountId), userId },
       { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
     );
 

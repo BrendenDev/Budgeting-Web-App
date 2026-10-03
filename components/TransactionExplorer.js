@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { formatCurrency, formatDate, getCategoryColor } from '@/lib/calculation-engine';
+import { formatCurrency, formatDate } from '@/lib/calculation-engine';
 import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
 
@@ -55,7 +55,6 @@ export default function TransactionExplorer({
 
   // Date range boundaries
   const dateFilter = useMemo(() => {
-    const now = new Date();
     const todayStr = getTodayMT();
     const [y, m, d] = todayStr.split('-').map(Number);
 

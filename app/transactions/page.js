@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useUser } from '@/lib/auth-context';
 import { useDialog } from '@/components/ConfirmDialog';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
@@ -10,9 +10,9 @@ import TransactionExplorer from '@/components/TransactionExplorer';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
-import { formatCurrency, formatDate } from '@/lib/calculation-engine';
+import { formatCurrency } from '@/lib/calculation-engine';
 import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
 
 function TransactionsContent() {
   const { user } = useUser();

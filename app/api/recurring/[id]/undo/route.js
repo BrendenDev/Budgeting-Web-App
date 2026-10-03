@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { requireUserId } from '@/lib/auth';
 
 /**
  * POST /api/rules/[id]/undo
@@ -14,6 +15,9 @@ import { ObjectId } from 'mongodb';
  */
 export async function POST(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const deleteRule = body.deleteRule === true;
@@ -21,8 +25,8 @@ export async function POST(request, { params }) {
     const db = await getDb();
     const ruleObjectId = new ObjectId(id);
 
-    // Find the rule first
-    const rule = await db.collection('rules').findOne({ _id: ruleObjectId });
+    // Find the rule first (ownership check — nothing is touched unless it's ours)
+    const rule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
     if (!rule) {
       return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     }
@@ -69,7 +73,7 @@ export async function POST(request, { params }) {
     for (const [accountId, delta] of Object.entries(balanceReversals)) {
       try {
         await db.collection('accounts').updateOne(
-          { _id: new ObjectId(accountId) },
+          { _id: new ObjectId(accountId), userId },
           { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
         );
       } catch (e) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useUser } from '@/lib/auth-context';
 import { useDialog } from '@/components/ConfirmDialog';
 import CategoryPicker from '@/components/CategoryPicker';
@@ -9,7 +9,7 @@ import Sidebar from '@/components/Sidebar';
 import Modal from '@/components/Modal';
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
 import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, RULE_FREQUENCIES, TRANSACTION_TYPES } from '@/models/schemas';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, RULE_FREQUENCIES } from '@/models/schemas';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
 import { invalidateCache } from '@/lib/data-cache';
 
@@ -65,7 +65,7 @@ function RecurringContent() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { ...form, amount: Math.abs(Number(form.amount)), userId: user.id };
+      const payload = { ...form, amount: Math.abs(Number(form.amount)), userId: user.id, today: getTodayMT() };
       if (editingRule) {
         await fetch(`/api/recurring/${editingRule._id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -81,7 +81,7 @@ function RecurringContent() {
       await fetch('/api/recurring/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id, today: getTodayMT() }),
       });
       setShowModal(false);
       invalidateCache('/api/recurring');
@@ -174,7 +174,7 @@ function RecurringContent() {
     setShowOccurrences(true);
     setOccLoading(true);
     try {
-      const res = await fetch(`/api/recurring/${rule._id}/occurrences?userId=${user.id}`);
+      const res = await fetch(`/api/recurring/${rule._id}/occurrences?userId=${user.id}&today=${getTodayMT()}`);
       const data = await res.json();
       setOccurrences(data.occurrences || []);
       setOccSummary(data.summary || { total: 0, active: 0, missing: 0 });

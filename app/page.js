@@ -1,24 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser } from '@/lib/auth-context';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
 import { invalidateCache } from '@/lib/data-cache';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
-import Modal from '@/components/Modal';
-import { useDialog } from '@/components/ConfirmDialog';
 import CategoryPicker from '@/components/CategoryPicker';
 import TransactionExplorer from '@/components/TransactionExplorer';
 import SpendingCalendar from '@/components/SpendingCalendar';
 import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor, calculateSpendingPacing, calculateSavingsRate, calculateDailyBurnRate, calculateMonthComparison } from '@/lib/calculation-engine';
 import { getTodayMT, getCurrentMonthMT, getCurrentYearMT, toDateStringMT } from '@/lib/date-utils';
-import { ACCOUNT_TYPES, EXPENSE_CATEGORIES, INCOME_CATEGORIES, TRANSACTION_TYPES } from '@/models/schemas';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function DashboardContent() {
   const { user } = useUser();
-  const { alert: showAlert } = useDialog();
   const [projectionDays, setProjectionDays] = useState(90);
   const [syncStatus, setSyncStatus] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -86,7 +83,7 @@ function DashboardContent() {
         const res = await fetch('/api/recurring/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id }),
+          body: JSON.stringify({ userId: user.id, today: getTodayMT() }),
         });
         const result = await res.json();
         if (!cancelled) {

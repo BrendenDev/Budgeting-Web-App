@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getCurrentMonthMT, getCurrentYearMT, getTodayMT } from '@/lib/date-utils';
+import { getTodayMT } from '@/lib/date-utils';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 

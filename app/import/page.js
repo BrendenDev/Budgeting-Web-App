@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '@/lib/auth-context';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
-import { formatCurrency, formatDate } from '@/lib/calculation-engine';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
+import { formatCurrency } from '@/lib/calculation-engine';
 
 // ─── CSV Parser ──────────────────────────────────────────────
 function parseCSV(text) {
@@ -158,7 +157,7 @@ function ImportContent() {
         const amount = parseFloat(rawAmount.replace(/[^0-9.\-]/g, '')) || 0;
         const description = row[mapping.description] || 'No description';
         const dateStr = row[mapping.date] || new Date().toISOString();
-        const category = row[mapping.category] || 'Miscellaneous';
+        const category = row[mapping.category] || 'Misc';
 
         // Determine type: if mapping has a type column use it, else use sign or default
         let type = defaultType;
@@ -541,7 +540,7 @@ function ImportContent() {
                         </td>
                         <td>
                           <span className="badge badge-indigo" style={{ fontSize: '0.7rem' }}>
-                            {row[mapping.category] || 'Miscellaneous'}
+                            {row[mapping.category] || 'Misc'}
                           </span>
                         </td>
                         <td>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useUser } from '@/lib/auth-context';
 import { useDialog } from '@/components/ConfirmDialog';
 import AuthGuard from '@/components/AuthGuard';
@@ -13,7 +13,7 @@ import { invalidateCache } from '@/lib/data-cache';
 
 function AccountsContent() {
   const { user } = useUser();
-  const { alert: showAlert } = useDialog();
+  const { alert: showAlert, confirm } = useDialog();
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [form, setForm] = useState({ name: '', type: 'checking', balance: '', institution: '' });
@@ -43,7 +43,9 @@ function AccountsContent() {
         await fetch(`/api/accounts/${editingAccount._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
+          // originalBalance = what the form was opened with. The server applies
+          // only the difference, so saving without touching the balance never moves money.
+          body: JSON.stringify({ ...form, originalBalance: editingAccount.balance }),
         });
       } else {
         await fetch('/api/accounts', {
@@ -61,10 +63,48 @@ function AccountsContent() {
     setSaving(false);
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
-    await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+  const handleDelete = async (acc) => {
+    // Fetch fresh counts so the user sees exactly what will be removed
+    let transactionCount = 0;
+    let ruleCount = 0;
+    try {
+      const res = await fetch(`/api/accounts/${acc._id}?withCounts=1`);
+      if (!res.ok) {
+        await showAlert('Could not load account details. Nothing was deleted.', { title: 'Delete Failed', variant: 'danger' });
+        return;
+      }
+      const info = await res.json();
+      transactionCount = info.transactionCount || 0;
+      ruleCount = info.ruleCount || 0;
+    } catch {
+      await showAlert('Network error. Nothing was deleted.', { title: 'Delete Failed', variant: 'danger' });
+      return;
+    }
+
+    const ok = await confirm(`Delete "${acc.name}" and everything attached to it?`, {
+      title: 'Delete Account',
+      confirmText: 'Delete Everything',
+      variant: 'danger',
+      details: [
+        `${transactionCount} transaction${transactionCount !== 1 ? 's' : ''} will be permanently deleted`,
+        `${ruleCount} recurring item${ruleCount !== 1 ? 's' : ''} will be permanently deleted`,
+        'This action cannot be undone',
+      ],
+    });
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/accounts/${acc._id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        await showAlert(err.error || 'Delete failed. You can safely try again.', { title: 'Delete Failed', variant: 'danger' });
+      }
+    } catch {
+      await showAlert('Network error. You can safely try again.', { title: 'Delete Failed', variant: 'danger' });
+    }
     invalidateCache('/api/accounts');
+    invalidateCache('/api/transactions');
+    invalidateCache('/api/recurring');
     refreshAccounts();
   };
 
@@ -176,7 +216,7 @@ function AccountsContent() {
                     background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
                     cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
                   }} title="Edit">✏️</button>
-                  <button onClick={() => handleDelete(acc._id)} style={{
+                  <button onClick={() => handleDelete(acc)} style={{
                     background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
                     cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
                   }} title="Delete">🗑️</button>

@@ -65,7 +65,7 @@ export function createTransactionDoc(data, userId) {
     accountId: data.accountId,
     amount: Number(data.amount),
     description: data.description.trim(),
-    category: data.category || 'Miscellaneous',
+    category: data.category || 'Misc',
     date: parseDateSafe(data.date),
     type: data.type,
     isRecurring: data.isRecurring || false,

@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { parseDateSafe, getTodayMT, toDateStringMT } from '@/lib/date-utils';
+import { requireUserId } from '@/lib/auth';
+import { ownsAccount } from '@/lib/ownership';
+import { parseDateSafe, resolveClientToday, toDateStringMT } from '@/lib/date-utils';
+import { generateOccurrenceDates } from '@/lib/recurrence';
 
 export async function GET(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const db = await getDb();
-    const rule = await db.collection('rules').findOne({ _id: new ObjectId(id) });
+    const rule = await db.collection('rules').findOne({ _id: new ObjectId(id), userId });
 
     if (!rule) {
       return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
@@ -21,6 +27,9 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const data = await request.json();
 
@@ -28,9 +37,22 @@ export async function PUT(request, { params }) {
     const ruleObjectId = new ObjectId(id);
 
     // Get current rule to detect date/frequency/amount changes
-    const oldRule = await db.collection('rules').findOne({ _id: ruleObjectId });
+    const oldRule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
     if (!oldRule) {
       return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+    }
+
+    // Normalize "no account": the edit form sends '' while the DB stores null.
+    // Without this, saving a rule that has no account looked like an account
+    // change and triggered a full delete-and-regenerate of its transactions.
+    const normAccountId = (v) => (v ? String(v) : null);
+    const accountChanged =
+      data.accountId !== undefined && normAccountId(data.accountId) !== normAccountId(oldRule.accountId);
+
+    // If pointing the rule at a different account, it must be ours.
+    // Checked before anything is modified.
+    if (accountChanged && data.accountId && !(await ownsAccount(db, data.accountId, userId))) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
     const updateData = {};
@@ -40,7 +62,7 @@ export async function PUT(request, { params }) {
     if (data.frequency) updateData.frequency = data.frequency;
     if (data.startDate) updateData.startDate = parseDateSafe(data.startDate);
     if (data.endDate !== undefined) updateData.endDate = data.endDate ? parseDateSafe(data.endDate) : null;
-    if (data.accountId !== undefined) updateData.accountId = data.accountId;
+    if (accountChanged) updateData.accountId = data.accountId || null;
     if (data.type) updateData.type = data.type;
     if (data.description !== undefined) updateData.description = data.description?.trim() || '';
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
@@ -58,7 +80,7 @@ export async function PUT(request, { params }) {
       (data.frequency && data.frequency !== oldRule.frequency) ||
       (data.amount && Number(data.amount) !== oldRule.amount) ||
       (data.type && data.type !== oldRule.type) ||
-      (data.accountId !== undefined && data.accountId !== oldRule.accountId);
+      accountChanged;
 
     if (needsRecalc) {
       // Step 1: Undo all existing materialized transactions for this rule
@@ -80,7 +102,7 @@ export async function PUT(request, { params }) {
         for (const [accountId, delta] of Object.entries(reversals)) {
           try {
             await db.collection('accounts').updateOne(
-              { _id: new ObjectId(accountId) },
+              { _id: new ObjectId(accountId), userId },
               { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
             );
           } catch (e) { /* skip invalid */ }
@@ -96,16 +118,17 @@ export async function PUT(request, { params }) {
 
     // Update the rule
     await db.collection('rules').updateOne(
-      { _id: ruleObjectId },
+      { _id: ruleObjectId, userId },
       { $set: updateData }
     );
 
     // Step 3: If recalculation was needed, re-process the rule up to today
     if (needsRecalc && updateData.isActive !== false && oldRule.isActive !== false) {
-      const updatedRule = await db.collection('rules').findOne({ _id: ruleObjectId });
-      const today = parseDateSafe(getTodayMT());
+      const updatedRule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
+      // Use the browser's local date (Vercel servers run in UTC)
+      const today = resolveClientToday(data.today);
 
-      const occurrences = generateOccurrences(updatedRule, parseDateSafe(updatedRule.startDate), today);
+      const occurrences = generateOccurrenceDates(updatedRule, parseDateSafe(updatedRule.startDate), today);
 
       if (occurrences.length > 0) {
         const txDocs = occurrences.map(date => ({
@@ -113,7 +136,7 @@ export async function PUT(request, { params }) {
           accountId: updatedRule.accountId || null,
           amount: updatedRule.amount,
           description: updatedRule.name,
-          category: updatedRule.category || 'Miscellaneous',
+          category: updatedRule.category || 'Misc',
           date: date,
           type: updatedRule.type,
           isRecurring: true,
@@ -131,7 +154,7 @@ export async function PUT(request, { params }) {
           const totalDelta = perDelta * occurrences.length;
           try {
             await db.collection('accounts').updateOne(
-              { _id: new ObjectId(updatedRule.accountId) },
+              { _id: new ObjectId(updatedRule.accountId), userId },
               { $inc: { balance: totalDelta }, $set: { updatedAt: new Date() } }
             );
           } catch (e) { /* skip */ }
@@ -164,9 +187,18 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const db = await getDb();
     const ruleObjectId = new ObjectId(id);
+
+    // Ownership check FIRST — nothing is touched unless this rule is ours
+    const rule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
+    if (!rule) {
+      return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+    }
 
     // First, undo all materialized transactions
     const transactions = await db.collection('transactions')
@@ -187,7 +219,7 @@ export async function DELETE(request, { params }) {
       for (const [accountId, delta] of Object.entries(reversals)) {
         try {
           await db.collection('accounts').updateOne(
-            { _id: new ObjectId(accountId) },
+            { _id: new ObjectId(accountId), userId },
             { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
           );
         } catch (e) { /* skip */ }
@@ -201,10 +233,7 @@ export async function DELETE(request, { params }) {
     await db.collection('rule_occurrences').deleteMany({ $or: [{ ruleId: ruleObjectId }, { ruleId: id }] });
 
     // Delete the rule
-    const result = await db.collection('rules').deleteOne({ _id: ruleObjectId });
-    if (result.deletedCount === 0) {
-      return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
-    }
+    await db.collection('rules').deleteOne({ _id: ruleObjectId, userId });
 
     return NextResponse.json({
       message: `Rule deleted, ${transactions.length} generated transactions undone`,
@@ -213,58 +242,4 @@ export async function DELETE(request, { params }) {
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete rule' }, { status: 500 });
   }
-}
-
-// ─── Helpers ────────────────────────────────────────────────
-// Uses the same noon-UTC pattern as the process route to ensure consistency.
-
-function generateOccurrences(rule, startDate, endDate) {
-  const dates = [];
-  let current = parseDateSafe(rule.startDate);
-  if (!current) return dates;
-
-  const anchorDay = current.getUTCDate();
-
-  while (current < startDate) {
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  while (current <= endDate) {
-    if (rule.endDate) {
-      const ruleEnd = parseDateSafe(rule.endDate);
-      if (ruleEnd && current > ruleEnd) break;
-    }
-    dates.push(new Date(current));
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  return dates;
-}
-
-function advanceDate(date, frequency, anchorDay) {
-  const next = new Date(date);
-  switch (frequency) {
-    case 'daily':     next.setUTCDate(next.getUTCDate() + 1); break;
-    case 'weekly':    next.setUTCDate(next.getUTCDate() + 7); break;
-    case 'biweekly':  next.setUTCDate(next.getUTCDate() + 14); break;
-    case 'monthly': {
-      next.setUTCMonth(next.getUTCMonth() + 1);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'quarterly': {
-      next.setUTCMonth(next.getUTCMonth() + 3);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'yearly':    next.setUTCFullYear(next.getUTCFullYear() + 1); break;
-    default:          next.setUTCMonth(next.getUTCMonth() + 1);
-  }
-  return next;
 }

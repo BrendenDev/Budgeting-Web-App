@@ -1,29 +1,32 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getTodayMT, parseDateSafe, toDateStringMT } from '@/lib/date-utils';
+import { requireUserId } from '@/lib/auth';
+import { parseDateSafe, resolveClientToday, toDateStringMT } from '@/lib/date-utils';
+import { generateOccurrenceDates } from '@/lib/recurrence';
 
 /**
- * GET /api/recurring/[id]/occurrences?userId=xxx
+ * GET /api/recurring/[id]/occurrences?today=YYYY-MM-DD
  * Returns all expected occurrences from startDate to today,
  * with status indicating whether each has a live transaction.
  */
 export async function GET(request, { params }) {
   try {
+    const { userId, error } = await requireUserId();
+    if (error) return error;
+
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
     const db = await getDb();
     const ruleObjectId = new ObjectId(id);
 
-    const rule = await db.collection('rules').findOne({ _id: ruleObjectId });
+    const rule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
     if (!rule) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
 
-    // Generate all expected occurrence dates from startDate to today (MT)
-    const today = parseDateSafe(getTodayMT());
-    const expectedDates = generateOccurrences(rule, parseDateSafe(rule.startDate), today);
+    // Generate all expected occurrence dates from startDate to today (browser's local date)
+    const today = resolveClientToday(searchParams.get('today'));
+    const expectedDates = generateOccurrenceDates(rule, parseDateSafe(rule.startDate), today);
 
     // Get all existing transactions for this rule
     const existingTx = await db.collection('transactions')
@@ -112,21 +115,24 @@ export async function GET(request, { params }) {
 /**
  * POST /api/recurring/[id]/occurrences
  * Reinstate a specific occurrence by creating the transaction.
- * Body: { date: "YYYY-MM-DD", userId: string }
+ * Body: { date: "YYYY-MM-DD" }
  */
 export async function POST(request, { params }) {
   try {
-    const { id } = await params;
-    const { date, userId } = await request.json();
+    const { userId, error } = await requireUserId();
+    if (error) return error;
 
-    if (!date || !userId) {
-      return NextResponse.json({ error: 'date and userId are required' }, { status: 400 });
+    const { id } = await params;
+    const { date } = await request.json();
+
+    if (!date) {
+      return NextResponse.json({ error: 'date is required' }, { status: 400 });
     }
 
     const db = await getDb();
     const ruleObjectId = new ObjectId(id);
 
-    const rule = await db.collection('rules').findOne({ _id: ruleObjectId });
+    const rule = await db.collection('rules').findOne({ _id: ruleObjectId, userId });
     if (!rule) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
 
     // Use noon-UTC for the occurrence date
@@ -172,7 +178,7 @@ export async function POST(request, { params }) {
       const delta = rule.type === 'income' ? rule.amount : -Math.abs(rule.amount);
       try {
         await db.collection('accounts').updateOne(
-          { _id: new ObjectId(rule.accountId) },
+          { _id: new ObjectId(rule.accountId), userId },
           { $inc: { balance: delta }, $set: { updatedAt: new Date() } }
         );
       } catch (e) { /* skip */ }
@@ -195,57 +201,4 @@ export async function POST(request, { params }) {
     console.error('Reinstate error:', error);
     return NextResponse.json({ error: 'Failed to reinstate occurrence' }, { status: 500 });
   }
-}
-
-// ─── Helpers ────────────────────────────────────
-
-function generateOccurrences(rule, startDate, endDate) {
-  const dates = [];
-  let current = parseDateSafe(rule.startDate);
-  if (!current || !startDate || !endDate) return dates;
-
-  const anchorDay = current.getUTCDate();
-
-  while (current < startDate) {
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  while (current <= endDate) {
-    if (rule.endDate) {
-      const ruleEnd = parseDateSafe(rule.endDate);
-      if (ruleEnd && current > ruleEnd) break;
-    }
-    dates.push(new Date(current));
-    current = advanceDate(current, rule.frequency, anchorDay);
-  }
-
-  return dates;
-}
-
-function advanceDate(date, frequency, anchorDay) {
-  const next = new Date(date);
-  switch (frequency) {
-    case 'daily':     next.setUTCDate(next.getUTCDate() + 1); break;
-    case 'weekly':    next.setUTCDate(next.getUTCDate() + 7); break;
-    case 'biweekly':  next.setUTCDate(next.getUTCDate() + 14); break;
-    case 'monthly': {
-      next.setUTCMonth(next.getUTCMonth() + 1);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'quarterly': {
-      next.setUTCMonth(next.getUTCMonth() + 3);
-      if (anchorDay) {
-        const maxDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-        next.setUTCDate(Math.min(anchorDay, maxDay));
-      }
-      break;
-    }
-    case 'yearly':    next.setUTCFullYear(next.getUTCFullYear() + 1); break;
-    default:          next.setUTCMonth(next.getUTCMonth() + 1);
-  }
-  return next;
 }
