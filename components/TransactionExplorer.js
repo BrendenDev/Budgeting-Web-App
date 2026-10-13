@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
 import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
+import { inputClass, TextButton } from '@/components/ui';
 
 /**
  * Reusable transaction search/filter/aggregate/list component.
@@ -119,56 +120,63 @@ export default function TransactionExplorer({
   const maxItems = compact ? 50 : 200;
   const displayTx = filtered.slice(0, maxItems);
 
+  const summaryItem = 'flex flex-col gap-0.5 px-3 py-2 first:pl-0';
+  const summaryLabel = 'text-[11px] text-faint';
+
   return (
-    <div className={`tx-explorer ${compact ? 'tx-explorer-compact' : ''}`}>
+    <div className={compact ? 'text-sm' : ''}>
       {/* Header */}
       {(title || onClose) && (
-        <div className="tx-explorer-header">
-          {title && <h3 className="tx-explorer-title">{title}</h3>}
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          {title && <h3 className="font-title text-base text-ink">{title}</h3>}
           {onClose && (
-            <button className="tx-explorer-close" onClick={onClose} aria-label="Close">×</button>
+            <button
+              className="cursor-pointer text-sm text-muted transition-colors hover:text-ink"
+              onClick={onClose}
+              aria-label="Close"
+            >close</button>
           )}
         </div>
       )}
 
       {/* Filters */}
-      <div className="tx-explorer-filters">
-        <div className="tx-explorer-search-row">
-          <div className="tx-explorer-search-wrap">
-            <span className="tx-explorer-search-icon">🔍</span>
-            <input
-              className="input-field tx-explorer-search"
-              type="text"
-              placeholder="Search transactions..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {search && (
-              <button className="tx-explorer-search-clear" onClick={() => setSearch('')}>×</button>
-            )}
-          </div>
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="relative">
+          <input
+            className={`${inputClass} pr-14`}
+            type="text"
+            placeholder="Search transactions…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-xs text-muted hover:text-ink"
+              onClick={() => setSearch('')}
+            >clear</button>
+          )}
         </div>
 
-        <div className="tx-explorer-filter-row">
-          <select className="select-field tx-explorer-select" value={filterType} onChange={e => setFilterType(e.target.value)}>
+        <div className="grid grid-cols-2 gap-2 md:flex">
+          <select className={`${inputClass} cursor-pointer md:flex-1`} value={filterType} onChange={e => setFilterType(e.target.value)}>
             <option value="all">All Types</option>
             <option value="income">Income</option>
             <option value="expense">Expense</option>
           </select>
 
-          <select className="select-field tx-explorer-select" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <select className={`${inputClass} cursor-pointer md:flex-1`} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
             <option value="all">All Categories</option>
             {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 
           {!compact && (
-            <select className="select-field tx-explorer-select" value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
+            <select className={`${inputClass} cursor-pointer md:flex-1`} value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
               <option value="all">All Accounts</option>
               {accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}
             </select>
           )}
 
-          <select className="select-field tx-explorer-select" value={dateRange} onChange={e => setDateRange(e.target.value)}>
+          <select className={`${inputClass} cursor-pointer md:flex-1`} value={dateRange} onChange={e => setDateRange(e.target.value)}>
             <option value="all">All Time</option>
             <option value="this-month">This Month</option>
             <option value="last-month">Last Month</option>
@@ -179,87 +187,72 @@ export default function TransactionExplorer({
         </div>
 
         {dateRange === 'custom' && (
-          <div className="tx-explorer-custom-dates">
-            <input className="input-field" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>to</span>
-            <input className="input-field" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <input className={inputClass} type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+            <span className="text-xs text-muted">to</span>
+            <input className={inputClass} type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
           </div>
         )}
       </div>
 
       {/* Aggregate Summary */}
-      <div className="tx-explorer-summary">
-        <div className="tx-explorer-summary-item">
-          <span className="tx-explorer-summary-label">Results</span>
-          <span className="tx-explorer-summary-value">{aggregates.count}</span>
+      <div className="mb-1 flex flex-wrap divide-x divide-rule border-y border-rule">
+        <div className={summaryItem}>
+          <span className={summaryLabel}>Results</span>
+          <span className="num text-ink">{aggregates.count}</span>
         </div>
-        <div className="tx-explorer-summary-divider" />
-        <div className="tx-explorer-summary-item">
-          <span className="tx-explorer-summary-label">Income</span>
-          <span className="tx-explorer-summary-value" style={{ color: 'var(--color-accent-emerald-light)' }}>
-            +{formatCurrency(aggregates.income)}
-          </span>
+        <div className={summaryItem}>
+          <span className={summaryLabel}>Income</span>
+          <span className="num text-accent">+{formatCurrency(aggregates.income)}</span>
         </div>
-        <div className="tx-explorer-summary-divider" />
-        <div className="tx-explorer-summary-item">
-          <span className="tx-explorer-summary-label">Expenses</span>
-          <span className="tx-explorer-summary-value" style={{ color: 'var(--color-accent-rose-light)' }}>
-            -{formatCurrency(aggregates.expenses)}
-          </span>
+        <div className={summaryItem}>
+          <span className={summaryLabel}>Expenses</span>
+          <span className="num text-debit">-{formatCurrency(aggregates.expenses)}</span>
         </div>
-        <div className="tx-explorer-summary-divider" />
-        <div className="tx-explorer-summary-item">
-          <span className="tx-explorer-summary-label">Net</span>
-          <span className="tx-explorer-summary-value" style={{
-            color: aggregates.net >= 0 ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
-            fontWeight: '700',
-          }}>
+        <div className={summaryItem}>
+          <span className={summaryLabel}>Net</span>
+          <span className={`num ${aggregates.net >= 0 ? 'text-accent' : 'text-debit'}`}>
             {aggregates.net >= 0 ? '+' : ''}{formatCurrency(aggregates.net)}
           </span>
         </div>
       </div>
 
       {/* Transaction List */}
-      <div className={`tx-explorer-list ${compact ? 'tx-explorer-list-compact' : ''}`}>
+      <div className={compact ? 'max-h-80 overflow-y-auto' : ''}>
         {displayTx.length > 0 ? (
           displayTx.map((tx, i) => (
-            <div key={tx._id || i} className="tx-explorer-row">
-              <div className="tx-explorer-row-left">
-                <div className={`tx-explorer-icon ${tx.type === 'income' ? 'tx-icon-income' : 'tx-icon-expense'}`}>
-                  {tx.type === 'income' ? '↗' : '↘'}
-                </div>
-                <div className="tx-explorer-row-info">
-                  <span className="tx-explorer-row-desc">{tx.description}</span>
-                  <span className="tx-explorer-row-meta">
-                    {tx.category}
-                    {!compact && <> · {getAccountName(tx.accountId)}</>}
-                    {' · '}{formatDate(tx.date)}
-                  </span>
+            <div
+              key={tx._id || i}
+              className="flex items-center justify-between gap-3 border-b border-rule px-1 py-2.5 transition-colors hover:bg-surface-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm text-ink">{tx.description}</div>
+                <div className="truncate text-xs text-faint">
+                  {tx.category}
+                  {!compact && <> · {getAccountName(tx.accountId)}</>}
+                  {' · '}{formatDate(tx.date)}
                 </div>
               </div>
-              <div className="tx-explorer-row-right">
-                <span className={`tx-explorer-row-amount ${tx.type === 'income' ? 'amount-income' : 'amount-expense'}`}>
+              <div className="flex shrink-0 items-center gap-4">
+                <span className={`num text-sm ${tx.type === 'income' ? 'text-accent' : 'text-debit'}`}>
                   {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
                 </span>
                 {!compact && onEdit && (
-                  <button className="tx-explorer-action-btn" onClick={() => onEdit(tx)} title="Edit">✏️</button>
+                  <TextButton onClick={() => onEdit(tx)} className="text-xs">edit</TextButton>
                 )}
                 {!compact && onDelete && (
-                  <button className="tx-explorer-action-btn" onClick={() => onDelete(tx)} title="Delete">🗑️</button>
+                  <TextButton tone="debit" onClick={() => onDelete(tx)} className="text-xs">delete</TextButton>
                 )}
               </div>
             </div>
           ))
         ) : (
-          <div className="tx-explorer-empty">
-            <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔎</p>
-            <p>No transactions match your filters</p>
-          </div>
+          <p className="py-8 text-center text-sm text-faint">No transactions match your filters</p>
         )}
         {filtered.length > maxItems && (
-          <div style={{ textAlign: 'center', padding: '0.75rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+          <p className="py-3 text-center text-xs text-muted">
             Showing {maxItems} of {filtered.length} results
-          </div>
+          </p>
         )}
       </div>
     </div>

@@ -16,135 +16,29 @@ export default function LoginPage() {
   }, [user, router]);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--color-bg-primary)',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      {/* Animated background orbs */}
-      <div style={{
-        position: 'absolute',
-        top: '-20%',
-        left: '-10%',
-        width: '500px',
-        height: '500px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
-        filter: 'blur(60px)',
-        animation: 'float 8s ease-in-out infinite',
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '-20%',
-        right: '-10%',
-        width: '400px',
-        height: '400px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%)',
-        filter: 'blur(60px)',
-        animation: 'float 10s ease-in-out infinite reverse',
-      }} />
-      <div style={{
-        position: 'absolute',
-        top: '40%',
-        right: '30%',
-        width: '300px',
-        height: '300px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%)',
-        filter: 'blur(60px)',
-        animation: 'float 12s ease-in-out infinite',
-      }} />
+    <div className="flex min-h-screen items-center justify-center bg-bg px-6">
+      <div className="w-full max-w-sm">
+        <h1 className="mb-1 font-title text-4xl text-ink">Budget App</h1>
+        <p className="mb-8 text-sm text-muted">Brenden&apos;s budgeting web app</p>
 
-      <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0); }
-          33% { transform: translate(30px, -30px); }
-          66% { transform: translate(-20px, 20px); }
-        }
-      `}</style>
-
-      <div className="animate-fade-in" style={{
-        width: '100%',
-        maxWidth: '420px',
-        padding: '0 1.5rem',
-        position: 'relative',
-        zIndex: 1,
-      }}>
-        {/* Logo / Header */}
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, var(--color-accent-indigo), var(--color-accent-violet))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 1.25rem',
-            fontSize: '1.75rem',
-            boxShadow: '0 0 30px rgba(99, 102, 241, 0.3)',
-          }}>
-            💰
-          </div>
-          <h1 style={{
-            fontSize: '1.75rem',
-            fontWeight: '700',
-            marginBottom: '0.5rem',
-          }}>
-            <span className="gradient-text">Budget App</span>
-          </h1>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
-            Brenden's Budgeting Web App
+        <div className="rule-double border-b border-rule py-6">
+          <p className="mb-5 text-sm text-muted">
+            Sign in with your Google account to open your ledger.
           </p>
-        </div>
-
-        {/* Login Form */}
-        <div className="glass-card" style={{ padding: '2rem' }}>
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
-              Sign in securely using your Google account to access your personal dashboard.
-            </p>
-          </div>
 
           <button
             onClick={() => { setIsLoading(true); login(); }}
-            className="btn-gradient"
             disabled={isLoading}
-            style={{
-              width: '100%',
-              padding: '0.8rem',
-              fontSize: '0.95rem',
-              justifyContent: 'center',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: 'white',
-              color: '#333',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              opacity: isLoading ? 0.7 : 1,
-            }}
+            className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-sm border border-rule-strong bg-surface-2 px-4 py-2.5 text-sm text-ink transition-colors hover:border-muted disabled:cursor-wait disabled:opacity-60"
           >
             {isLoading ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{
-                  width: '16px',
-                  height: '16px',
-                  border: '2px solid rgba(0,0,0,0.1)',
-                  borderTopColor: '#333',
-                  borderRadius: '50%',
-                  display: 'inline-block',
-                  animation: 'spin 0.6s linear infinite',
-                }} />
-                Connecting...
-              </span>
+              <>
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-muted border-t-transparent" aria-hidden />
+                Connecting…
+              </>
             ) : (
               <>
-                <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -155,12 +49,6 @@ export default function LoginPage() {
             )}
           </button>
         </div>
-
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
       </div>
     </div>
   );

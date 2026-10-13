@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { inputClass, lineInputClass } from '@/components/ui';
 
 /**
  * Searchable category dropdown.
@@ -11,9 +12,11 @@ import { useState, useRef, useEffect } from 'react';
  *   value: string
  *   onChange: (value: string) => void
  *   style?: object
+ *   className?: string
  *   placeholder?: string
+ *   variant?: 'box' | 'line'   ('line' = underline input used in the ledger-line Quick Add)
  */
-export default function CategoryPicker({ categories, value, onChange, style = {}, placeholder = 'Category' }) {
+export default function CategoryPicker({ categories, value, onChange, style = {}, className = '', placeholder = 'Category', variant = 'box' }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [highlighted, setHighlighted] = useState(0);
@@ -59,17 +62,14 @@ export default function CategoryPicker({ categories, value, onChange, style = {}
     }
   };
 
+  const triggerBase = variant === 'line' ? lineInputClass : inputClass;
+
   return (
-    <div ref={wrapRef} style={{ position: 'relative', ...style }}>
+    <div ref={wrapRef} className={`relative ${className}`} style={style}>
       {/* Display button / search input */}
       <div
         onClick={() => { setOpen(!open); setHighlighted(0); setTimeout(() => inputRef.current?.focus(), 0); }}
-        className="input-field"
-        style={{
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          fontSize: '0.85rem', padding: '0.55rem 0.75rem', minHeight: '36px',
-          userSelect: 'none',
-        }}
+        className={`${triggerBase} flex min-h-9 cursor-pointer select-none items-center justify-between`}
       >
         {open ? (
           <input
@@ -79,54 +79,32 @@ export default function CategoryPicker({ categories, value, onChange, style = {}
             onKeyDown={handleKeyDown}
             placeholder={value || placeholder}
             onClick={e => e.stopPropagation()}
-            style={{
-              background: 'transparent', border: 'none', outline: 'none', color: 'inherit',
-              fontSize: 'inherit', fontFamily: 'inherit', width: '100%', padding: 0,
-            }}
+            className="w-full border-0 bg-transparent p-0 text-inherit placeholder:text-faint focus:outline-none"
           />
         ) : (
-          <span style={{ color: value ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+          <span className={`truncate ${value ? 'text-ink' : 'text-faint'}`}>
             {value || placeholder}
           </span>
         )}
-        <span style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', marginLeft: '0.5rem', flexShrink: 0 }}>
-          {open ? '▲' : '▼'}
-        </span>
+        <span className="ml-2 shrink-0 text-[10px] text-faint">{open ? '▴' : '▾'}</span>
       </div>
 
       {/* Dropdown */}
       {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-          marginTop: '4px', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-bg-secondary)',
-          border: '1px solid var(--color-border-default)',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
-          maxHeight: '200px', overflowY: 'auto',
-        }}>
+        <div className="absolute inset-x-0 top-full z-50 mt-1 max-h-52 overflow-y-auto rounded-sm border border-rule-strong bg-surface shadow-lg shadow-black/40">
           {filtered.length === 0 ? (
-            <div style={{ padding: '0.6rem 0.75rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-              No matches
-            </div>
+            <div className="px-3 py-2 text-[13px] text-faint">No matches</div>
           ) : (
             filtered.map((cat, i) => (
               <div
                 key={cat}
                 onClick={() => select(cat)}
                 onMouseEnter={() => setHighlighted(i)}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  transition: 'background 0.1s',
-                  background: i === highlighted
-                    ? 'rgba(99, 102, 241, 0.15)'
-                    : cat === value
-                      ? 'rgba(99, 102, 241, 0.06)'
-                      : 'transparent',
-                  color: cat === value ? 'var(--color-accent-indigo-light)' : 'var(--color-text-primary)',
-                  fontWeight: cat === value ? '600' : '400',
-                }}
+                className={
+                  'cursor-pointer px-3 py-1.5 text-[13px] ' +
+                  (i === highlighted ? 'bg-surface-2 ' : '') +
+                  (cat === value ? 'text-accent' : 'text-ink')
+                }
               >
                 {cat}
               </div>

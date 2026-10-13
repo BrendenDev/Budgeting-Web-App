@@ -12,8 +12,9 @@ A personal finance tracker built as a **client-heavy Next.js app** backed by Mon
 | Runtime | React 19 |
 | Auth | NextAuth v4 (Google OAuth, stateless JWT) |
 | Database | MongoDB 6 (native driver, no ORM) |
-| Charts | Recharts |
-| Styling | Tailwind CSS v4 + custom CSS variables |
+| Charts | Hand-built SVG (`components/ProjectionChart.js`), no chart library |
+| Styling | Tailwind CSS v4 (tokens in `@theme`) + small in-house UI kit |
+| Fonts | DM Sans / DM Mono / Fraunces via `next/font` (self-hosted) |
 | Hosting | Vercel (free tier) |
 
 ---
@@ -23,18 +24,22 @@ A personal finance tracker built as a **client-heavy Next.js app** backed by Mon
 ```
 Budget App/
 ├── app/                        # Pages + API routes (Next.js App Router)
-│   ├── page.js                 # Dashboard (724 lines)
+│   ├── page.js                 # Overview
 │   ├── accounts/page.js        # Account management
 │   ├── transactions/page.js    # Transaction explorer
 │   ├── recurring/page.js       # Recurring rules & occurrences
 │   ├── import/page.js          # CSV import wizard
 │   ├── login/page.js           # Google OAuth login
-│   ├── layout.js               # Root layout (AuthProvider wrapper)
-│   ├── globals.css             # Design system & theme
+│   ├── layout.js               # Root layout (fonts, AuthProvider, DialogProvider)
+│   ├── globals.css             # Design tokens + base styles (~150 lines)
 │   └── api/                    # REST endpoints (see below)
 ├── components/                 # Shared UI components
+│   ├── ui/index.js             # UI kit: Page, Section, Button, TextButton, Input, Select,
+│   │                           #   Field, Table/Th/Td, Tag, Tally/TallyItem, Empty, Skeleton, Spinner
+│   ├── overview.js             # Overview pieces (TallyStrip, CategoryBreakdown, …) — markup only
+│   ├── ProjectionChart.js      # SVG balance projection chart
 │   ├── AuthGuard.js            # Route protection
-│   ├── Sidebar.js              # Navigation
+│   ├── Sidebar.js              # Left rail / mobile bottom bar
 │   ├── Modal.js                # Generic modal
 │   ├── ConfirmDialog.js        # Promise-based confirm/alert system
 │   ├── CategoryPicker.js       # Searchable category combobox
@@ -53,6 +58,22 @@ Budget App/
 └── models/
     └── schemas.js              # Validation + document factories
 ```
+
+---
+
+## Design System — "Ledger, after dark"
+
+Dark UI with ledger structure: ruled sections instead of cards, right-aligned mono numbers, quiet text actions. No gradients, glows or emoji.
+
+- **Tokens** live in `app/globals.css` `@theme` and become Tailwind utilities:
+  `bg` `surface` `surface-2` `rule` `rule-strong` (backgrounds/lines), `ink` `muted` `faint` (text),
+  `accent` (sage: income, primary, active), `debit` (clay: expenses, destructive), `warn` (ochre).
+  Use e.g. `bg-surface`, `text-muted`, `border-rule`. Don't hard-code hex colours.
+- **Fonts:** `font-sans` (DM Sans, body), `num` utility (DM Mono + tabular figures, for all money), `font-title` (Fraunces, soft — section titles only).
+- **Ledger utilities:** `rule-double` (double top rule that opens a section), `cal-shade` (calendar intensity via `--spend-intensity`).
+- **Build new screens from `components/ui`** — `Page` (shell + title), `Section` (ruled block), `Table`/`Th`/`Td` + `rowClass`, `Button` (primary/secondary/danger), `TextButton` (`edit`/`delete`-style actions), `Field` + `Input`/`Select`.
+- Hover/focus are CSS only (no JS hover handlers). Inline `style` is reserved for data-driven values (bar widths, chart sizes).
+- Pages keep all data logic (fetches, handlers, memos) at the top; markup components only receive computed values.
 
 ---
 

@@ -12,6 +12,7 @@ import { getTodayMT, toDateStringMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, RULE_FREQUENCIES } from '@/models/schemas';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
 import { invalidateCache } from '@/lib/data-cache';
+import { Page, Section, Button, TextButton, Input, Select, Field, Table, Th, Td, rowClass, Tag, Skeleton, Empty } from '@/components/ui';
 
 function RecurringContent() {
   const { user } = useUser();
@@ -230,140 +231,114 @@ function RecurringContent() {
   };
 
   return (
-    <div className="page-container">
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Recurring</h1>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
-            Manage recurring income & expense rules for projections
-          </p>
-        </div>
-        <button className="btn-gradient" onClick={openCreate} id="add-rule-btn">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          Add Recurring
-        </button>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '80px', borderRadius: 'var(--radius-lg)' }} />)}
-        </div>
-      ) : rules.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {rules.map((rule) => {
-            const isEnded = rule.endDate && toDateStringMT(rule.endDate) < getTodayMT();
-            const isDimmed = rule.isActive === false || isEnded;
-            return (
-            <div key={rule._id} className="glass-card animate-fade-in" style={{
-              padding: '1.25rem 1.5rem',
-              opacity: isDimmed ? 0.5 : 1,
-              transition: 'opacity 0.3s ease',
-            }}>
-              <div className="list-item-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '8px',
-                    background: rule.type === 'income' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1rem', flexShrink: 0,
-                  }}>
-                    {rule.type === 'income' ? '📥' : '📤'}
-                  </div>
-                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => openOccurrences(rule)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>{rule.name}</span>
-                      <span className={`badge ${rule.type === 'income' ? 'badge-emerald' : 'badge-rose'}`}>
-                        {rule.type}
+    <Page
+      title="Recurring"
+      actions={<Button onClick={openCreate} id="add-rule-btn">Add recurring</Button>}
+    >
+      <Section title="Rules" aside={<span className="hidden sm:inline">Click a rule to see its occurrences</span>} bodyClassName="py-0">
+        {loading ? (
+          <div className="space-y-2 py-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}
+          </div>
+        ) : rules.length > 0 ? (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th className="hidden md:table-cell">Category</Th>
+                <Th className="hidden lg:table-cell">Account</Th>
+                <Th className="hidden sm:table-cell">Schedule</Th>
+                <Th align="right">Amount</Th>
+                <Th align="right"><span className="sr-only">Actions</span></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((rule) => {
+                const isEnded = rule.endDate && toDateStringMT(rule.endDate) < getTodayMT();
+                const isDimmed = rule.isActive === false || isEnded;
+                return (
+                  <tr key={rule._id} className={`${rowClass} ${isDimmed ? 'opacity-50' : ''}`}>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => openOccurrences(rule)}
+                        className="cursor-pointer text-left text-ink underline-offset-4 hover:underline"
+                      >
+                        {rule.name}
+                      </button>
+                      <span className="ml-2 inline-flex gap-1 align-middle">
+                        {isEnded && <Tag>ended</Tag>}
+                        {rule.isActive === false && !isEnded && <Tag tone="warn">paused</Tag>}
                       </span>
-                      <span className="badge badge-indigo">{freqLabel[rule.frequency]}</span>
-                      {isEnded && (
-                        <span style={{
-                          fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase',
-                          padding: '0.15rem 0.5rem', borderRadius: '999px',
-                          background: 'rgba(148, 163, 184, 0.15)', color: 'var(--color-text-muted)',
-                          letterSpacing: '0.05em',
-                        }}>Ended</span>
-                      )}
-                      {rule.isActive === false && !isEnded && (
-                        <span style={{
-                          fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase',
-                          padding: '0.15rem 0.5rem', borderRadius: '999px',
-                          background: 'rgba(251, 191, 36, 0.15)', color: 'var(--color-accent-amber)',
-                          letterSpacing: '0.05em',
-                        }}>Paused</span>
-                      )}
-                    </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                      {rule.category} · {getAccountName(rule.accountId)} · Since {formatDate(rule.startDate)}
-                      {rule.endDate ? ` · ${isEnded ? 'Ended' : 'Until'} ${formatDate(rule.endDate)}` : ''}
-                      <span style={{ color: 'var(--color-accent-indigo-light)', marginLeft: '0.5rem' }}>— click to view occurrences</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="list-item-row-right" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{
-                    fontSize: '1.1rem', fontWeight: '700', fontFamily: 'var(--font-mono)',
-                    color: rule.type === 'income' ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
-                  }}>
-                    {rule.type === 'income' ? '+' : '-'}{formatCurrency(rule.amount)}
-                  </span>
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    <button onClick={() => toggleActive(rule)} style={{
-                      background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem',
-                      color: isDimmed ? 'var(--color-text-muted)' : 'var(--color-accent-emerald)',
-                    }} title={isEnded ? 'Rule has ended' : rule.isActive === false ? 'Enable' : 'Disable'}>
-                      {isEnded ? '⏹️' : rule.isActive === false ? '⏸️' : '▶️'}
-                    </button>
-                    <button onClick={() => handleUndo(rule)} style={{ background: 'transparent', border: 'none', color: 'var(--color-accent-amber)', cursor: 'pointer', fontSize: '0.85rem' }} title="Undo all generated transactions">↩️</button>
-                    <button onClick={() => openEdit(rule)} style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✏️</button>
-                    <button onClick={() => handleDelete(rule)} style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>🗑️</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔄</p>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>No Recurring</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-            Add Recurring to project your future balances.
-          </p>
-          <button className="btn-gradient" onClick={openCreate}>Add Your First Recurring Item</button>
-        </div>
-      )}
+                      <div className="mt-0.5 text-xs text-faint md:hidden">{rule.category} · {freqLabel[rule.frequency]}</div>
+                    </Td>
+                    <Td className="hidden text-muted md:table-cell">{rule.category}</Td>
+                    <Td className="hidden text-muted lg:table-cell">{getAccountName(rule.accountId)}</Td>
+                    <Td className="hidden text-xs text-muted sm:table-cell">
+                      <div className="text-ink/90">{freqLabel[rule.frequency]}</div>
+                      <div className="text-faint">
+                        since {formatDate(rule.startDate)}
+                        {rule.endDate ? ` · ${isEnded ? 'ended' : 'until'} ${formatDate(rule.endDate)}` : ''}
+                      </div>
+                    </Td>
+                    <Td align="right">
+                      <span className={`num ${rule.type === 'income' ? 'text-accent' : 'text-debit'}`}>
+                        {rule.type === 'income' ? '+' : '-'}{formatCurrency(rule.amount)}
+                      </span>
+                    </Td>
+                    <Td align="right" className="whitespace-nowrap">
+                      <span className="inline-flex gap-3">
+                        <TextButton
+                          className="text-xs"
+                          onClick={() => toggleActive(rule)}
+                          title={isEnded ? 'Rule has ended' : rule.isActive === false ? 'Enable' : 'Disable'}
+                        >
+                          {isEnded ? 'ended' : rule.isActive === false ? 'resume' : 'pause'}
+                        </TextButton>
+                        <TextButton tone="warn" className="text-xs" onClick={() => handleUndo(rule)} title="Undo all generated transactions">undo</TextButton>
+                        <TextButton className="text-xs" onClick={() => openEdit(rule)}>edit</TextButton>
+                        <TextButton tone="debit" className="text-xs" onClick={() => handleDelete(rule)}>delete</TextButton>
+                      </span>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        ) : (
+          <div className="py-10 text-center">
+            <p className="mb-1 text-ink">No recurring items</p>
+            <p className="mb-5 text-sm text-muted">Add recurring items to project your future balances.</p>
+            <Button onClick={openCreate}>Add your first recurring item</Button>
+          </div>
+        )}
+      </Section>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingRule ? 'Edit Recurring Item' : 'New Recurring Item'}>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingRule ? 'Edit recurring item' : 'New recurring item'}>
         <form onSubmit={handleSave}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Rule Name</label>
-              <input className="input-field" placeholder="e.g. Monthly Rent" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Amount</label>
-                <input className="input-field" type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Type</label>
-                <select className="select-field" value={form.type} onChange={(e) => setForm({...form, type: e.target.value, category: e.target.value === 'income' ? 'Work' : 'Misc'})}>
+          <div className="flex flex-col gap-4">
+            <Field label="Rule name">
+              <Input placeholder="e.g. Monthly Rent" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Amount">
+                <Input className="num" type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} required />
+              </Field>
+              <Field label="Type">
+                <Select value={form.type} onChange={(e) => setForm({...form, type: e.target.value, category: e.target.value === 'income' ? 'Work' : 'Misc'})}>
                   <option value="expense">Expense</option>
                   <option value="income">Income</option>
-                </select>
-              </div>
+                </Select>
+              </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Frequency</label>
-                <select className="select-field" value={form.frequency} onChange={(e) => setForm({...form, frequency: e.target.value})}>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Frequency">
+                <Select value={form.frequency} onChange={(e) => setForm({...form, frequency: e.target.value})}>
                   {RULE_FREQUENCIES.map(f => <option key={f} value={f}>{freqLabel[f]}</option>)}
-                </select>
-              </div>
+                </Select>
+              </Field>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Category</label>
+                <span className="mb-1.5 block text-xs text-muted">Category</span>
                 <CategoryPicker
                   categories={categories}
                   value={form.category}
@@ -371,29 +346,26 @@ function RecurringContent() {
                 />
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Start Date</label>
-                <input className="input-field" type="date" value={form.startDate} onChange={(e) => setForm({...form, startDate: e.target.value})} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>End Date (Optional)</label>
-                <input className="input-field" type="date" value={form.endDate} onChange={(e) => setForm({...form, endDate: e.target.value})} />
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Start date">
+                <Input type="date" value={form.startDate} onChange={(e) => setForm({...form, startDate: e.target.value})} required />
+              </Field>
+              <Field label="End date (optional)">
+                <Input type="date" value={form.endDate} onChange={(e) => setForm({...form, endDate: e.target.value})} />
+              </Field>
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Account</label>
-              <select className="select-field" value={form.accountId} onChange={(e) => setForm({...form, accountId: e.target.value})}>
+            <Field label="Account">
+              <Select value={form.accountId} onChange={(e) => setForm({...form, accountId: e.target.value})}>
                 <option value="">No specific account</option>
                 {accounts.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}
-              </select>
-            </div>
+              </Select>
+            </Field>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-            <button type="submit" className="btn-gradient" disabled={saving}>
-              {saving ? 'Saving...' : editingRule ? 'Update' : 'Create'}
-            </button>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingRule ? 'Update' : 'Create'}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -401,109 +373,65 @@ function RecurringContent() {
       {/* ─── Occurrence Detail Modal ──────────────── */}
       <Modal isOpen={showOccurrences} onClose={() => setShowOccurrences(false)} title={occRule ? `${occRule.name} — Occurrences` : 'Occurrences'}>
         {occLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '48px', borderRadius: 'var(--radius-md)' }} />)}
+          <div className="flex flex-col gap-2">
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-10" />)}
           </div>
         ) : (
           <>
-            {/* Summary bar */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              <div style={{
-                flex: 1, padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-md)',
-                background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.15)', textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-accent-indigo-light)' }}>{occSummary.total}</p>
-                <p style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total</p>
+            {/* Summary */}
+            <div className="mb-4 grid grid-cols-3 divide-x divide-rule border-y border-rule">
+              <div className="px-3 py-2">
+                <p className="text-[11px] text-faint">Total</p>
+                <p className="num text-lg text-ink">{occSummary.total}</p>
               </div>
-              <div style={{
-                flex: 1, padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-md)',
-                background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.15)', textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-accent-emerald-light)' }}>{occSummary.active}</p>
-                <p style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active</p>
+              <div className="px-3 py-2">
+                <p className="text-[11px] text-faint">Active</p>
+                <p className="num text-lg text-accent">{occSummary.active}</p>
               </div>
-              <div style={{
-                flex: 1, padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-md)',
-                background: occSummary.missing > 0 ? 'rgba(244, 63, 94, 0.08)' : 'rgba(100, 116, 139, 0.08)',
-                border: `1px solid ${occSummary.missing > 0 ? 'rgba(244, 63, 94, 0.15)' : 'rgba(100, 116, 139, 0.15)'}`,
-                textAlign: 'center',
-              }}>
-                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: occSummary.missing > 0 ? 'var(--color-accent-rose-light)' : 'var(--color-text-muted)' }}>{occSummary.missing}</p>
-                <p style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Missing</p>
+              <div className="px-3 py-2">
+                <p className="text-[11px] text-faint">Missing</p>
+                <p className={`num text-lg ${occSummary.missing > 0 ? 'text-debit' : 'text-muted'}`}>{occSummary.missing}</p>
               </div>
             </div>
 
             {/* Occurrence list */}
-            <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <div className="max-h-[400px] overflow-y-auto">
               {occurrences.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--color-text-muted)' }}>
-                  <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📅</p>
-                  <p>No occurrences to show</p>
-                </div>
+                <Empty>No occurrences to show</Empty>
               ) : (
                 occurrences.map((occ, i) => (
-                  <div key={occ.date + i} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)',
-                    background: occ.active ? 'var(--color-bg-input)' : 'rgba(100, 116, 139, 0.04)',
-                    border: `1px solid ${occ.active ? 'var(--color-border-default)' : 'rgba(100, 116, 139, 0.1)'}`,
-                    opacity: occ.active ? 1 : 0.5,
-                    transition: 'all 0.2s ease',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{
-                        width: '8px', height: '8px', borderRadius: '50%',
-                        background: occ.active ? 'var(--color-accent-emerald)' : 'var(--color-accent-rose)',
-                        flexShrink: 0,
-                      }} />
-                      <div>
-                        <p style={{ fontSize: '0.85rem', fontWeight: '500', color: occ.active ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-                          {formatDate(occ.date)}
-                        </p>
-                        <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                          {occ.active ? 'Active' : 'Missing — deleted or not yet processed'}
-                          {occ.orphan && ' (date shifted from rule edit)'}
-                        </p>
-                      </div>
+                  <div
+                    key={occ.date + i}
+                    className={`flex items-center justify-between gap-3 border-b border-rule px-1 py-2.5 ${occ.active ? '' : 'opacity-60'}`}
+                  >
+                    <div className="min-w-0">
+                      <p className={`num text-sm ${occ.active ? 'text-ink' : 'text-muted'}`}>{formatDate(occ.date)}</p>
+                      <p className="text-xs text-faint">
+                        {occ.active ? 'Active' : 'Missing — deleted or not yet processed'}
+                        {occ.orphan && ' (date shifted from rule edit)'}
+                      </p>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{
-                        fontSize: '0.85rem', fontWeight: '600', fontFamily: 'var(--font-mono)',
-                        color: occ.active
-                          ? (occRule?.type === 'income' ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)')
-                          : 'var(--color-text-muted)',
-                      }}>
+                    <div className="flex shrink-0 items-center gap-4">
+                      <span className={`num text-sm ${occ.active ? (occRule?.type === 'income' ? 'text-accent' : 'text-debit') : 'text-muted'}`}>
                         {occRule?.type === 'income' ? '+' : '-'}{formatCurrency(occ.amount)}
                       </span>
                       {occ.active ? (
-                        <button
+                        <TextButton
+                          tone="debit"
+                          className="text-xs"
                           onClick={(e) => { e.stopPropagation(); handleDeleteOccurrence(occ); }}
-                          style={{
-                            background: 'transparent', border: '1px solid var(--color-border-default)',
-                            borderRadius: 'var(--radius-sm)', padding: '0.25rem 0.5rem',
-                            fontSize: '0.7rem', color: 'var(--color-text-muted)', cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                          }}
-                          onMouseEnter={e => { e.target.style.borderColor = 'var(--color-accent-rose)'; e.target.style.color = 'var(--color-accent-rose)'; }}
-                          onMouseLeave={e => { e.target.style.borderColor = 'var(--color-border-default)'; e.target.style.color = 'var(--color-text-muted)'; }}
                         >
-                          Delete
-                        </button>
+                          delete
+                        </TextButton>
                       ) : (
-                        <button
+                        <TextButton
+                          tone="accent"
+                          className="text-xs"
                           onClick={(e) => { e.stopPropagation(); handleReinstate(occ); }}
                           disabled={reinstating === occ.date}
-                          style={{
-                            background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)',
-                            borderRadius: 'var(--radius-sm)', padding: '0.25rem 0.6rem',
-                            fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-accent-emerald-light)',
-                            cursor: reinstating === occ.date ? 'wait' : 'pointer',
-                            transition: 'all 0.2s ease',
-                            opacity: reinstating === occ.date ? 0.6 : 1,
-                          }}
                         >
-                          {reinstating === occ.date ? '…' : 'Reinstate'}
-                        </button>
+                          {reinstating === occ.date ? 'reinstating…' : 'reinstate'}
+                        </TextButton>
                       )}
                     </div>
                   </div>
@@ -511,13 +439,13 @@ function RecurringContent() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-              <button className="btn-secondary" onClick={() => { setShowOccurrences(false); refreshRules(); }}>Close</button>
+            <div className="mt-5 flex justify-end">
+              <Button variant="secondary" onClick={() => { setShowOccurrences(false); refreshRules(); }}>Close</Button>
             </div>
           </>
         )}
       </Modal>
-    </div>
+    </Page>
   );
 }
 

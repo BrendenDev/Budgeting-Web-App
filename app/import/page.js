@@ -5,6 +5,8 @@ import { useUser } from '@/lib/auth-context';
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import { formatCurrency } from '@/lib/calculation-engine';
+import Link from 'next/link';
+import { Page, Section, Button, Select, Field, Table, Th, Td, rowClass, Tag, Tally, TallyItem, Spinner } from '@/components/ui';
 
 // ─── CSV Parser ──────────────────────────────────────────────
 function parseCSV(text) {
@@ -232,287 +234,188 @@ function ImportContent() {
   const previewData = step === 'preview' ? buildPreviewData() : [];
 
   // ─── Render ───────────────────────────────────────────────
-  return (
-    <div style={{ marginLeft: '260px', padding: '2rem', minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
-      <div className="animate-fade-in" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Import Transactions</h1>
-        <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
-          Upload a CSV file to bulk-import transactions into your account
-        </p>
-      </div>
+  const stepNames = ['upload', 'map', 'preview', 'done'];
+  const currentIdx = stepNames.indexOf(step);
+  const mappedCols = [mapping.date, mapping.description, mapping.amount, mapping.category, mapping.type];
+  const colTag = { [mapping.date]: 'date', [mapping.description]: 'description', [mapping.amount]: 'amount' };
 
+  return (
+    <Page title="Import">
       {/* Step Indicator */}
-      <div className="animate-fade-in" style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem',
-      }}>
-        {['Upload', 'Map Columns', 'Preview', 'Done'].map((label, i) => {
-          const stepNames = ['upload', 'map', 'preview', 'done'];
-          const currentIdx = stepNames.indexOf(step);
+      <ol className="mb-8 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        {['Upload', 'Map columns', 'Preview', 'Done'].map((label, i) => {
           const isActive = i === currentIdx;
           const isComplete = i < currentIdx;
           return (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{
-                width: '28px', height: '28px', borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.75rem', fontWeight: '700',
-                background: isComplete ? 'var(--color-accent-emerald)' : isActive ? 'var(--color-accent-indigo)' : 'var(--color-bg-card)',
-                color: isComplete || isActive ? 'white' : 'var(--color-text-muted)',
-                border: !isComplete && !isActive ? '1px solid var(--color-border-default)' : 'none',
-                transition: 'all 0.3s ease',
-              }}>
-                {isComplete ? '✓' : i + 1}
-              </div>
-              <span style={{
-                fontSize: '0.8rem', fontWeight: isActive ? '600' : '400',
-                color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-              }}>
+            <li key={label} className="flex items-center gap-2">
+              <span className={`num text-xs ${isComplete ? 'text-accent' : isActive ? 'text-ink' : 'text-faint'}`}>
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span className={isActive ? 'text-ink underline decoration-accent underline-offset-4' : isComplete ? 'text-muted' : 'text-faint'}>
                 {label}
               </span>
-              {i < 3 && (
-                <div style={{
-                  width: '40px', height: '2px',
-                  background: isComplete ? 'var(--color-accent-emerald)' : 'var(--color-border-default)',
-                  margin: '0 0.25rem',
-                  transition: 'background 0.3s ease',
-                }} />
-              )}
-            </div>
+              {i < 3 && <span className="mx-1 text-faint">—</span>}
+            </li>
           );
         })}
-      </div>
+      </ol>
 
       {/* ─── Step 1: Upload ─────────────────────────────────── */}
       {step === 'upload' && (
-        <div className="glass-card animate-fade-in" style={{ padding: '3rem', textAlign: 'center' }}>
+        <Section title="Choose a file">
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: `2px dashed ${dragOver ? 'var(--color-accent-indigo)' : 'var(--color-border-default)'}`,
-              borderRadius: 'var(--radius-xl)',
-              padding: '3rem 2rem',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              background: dragOver ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-            }}
+            className={
+              'cursor-pointer rounded-sm border border-dashed px-6 py-14 text-center transition-colors ' +
+              (dragOver ? 'border-accent bg-accent/5' : 'border-rule-strong hover:border-muted')
+            }
           >
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📄</div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
-              Drop your CSV file here
-            </h3>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-              or click to browse files
-            </p>
-            <p style={{
-              fontSize: '0.75rem', color: 'var(--color-text-muted)',
-              padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-bg-input)', display: 'inline-block',
-            }}>
-              Supports CSV files from most banks and financial apps
-            </p>
+            <p className="mb-1 text-ink">Drop a CSV file here</p>
+            <p className="mb-4 text-sm text-muted">or click to browse</p>
+            <p className="text-xs text-faint">Works with CSV exports from most banks and finance apps</p>
           </div>
           <input
             ref={fileInputRef}
             type="file"
             accept=".csv"
-            style={{ display: 'none' }}
+            className="hidden"
             onChange={(e) => handleFile(e.target.files[0])}
           />
-        </div>
+        </Section>
       )}
 
       {/* ─── Step 2: Map Columns ────────────────────────────── */}
       {step === 'map' && (
-        <div className="animate-fade-in">
-          <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              <span className="badge badge-indigo">📄 {fileName}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                {csvData.rows.length} rows · {csvData.headers.length} columns
-              </span>
-            </div>
-
-            <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1rem' }}>Map CSV Columns</h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '1.25rem' }}>
-              Match your CSV columns to transaction fields. We auto-detected what we could.
+        <>
+          <Section
+            title="Map columns"
+            aside={<span><span className="text-ink">{fileName}</span> · {csvData.rows.length} rows · {csvData.headers.length} columns</span>}
+            className="mb-6"
+          >
+            <p className="mb-5 text-sm text-muted">
+              Match your CSV columns to transaction fields. Detected columns are pre-filled.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="grid gap-4 sm:grid-cols-2">
               {[
-                { key: 'date', label: 'Date Column', required: true },
-                { key: 'description', label: 'Description Column', required: true },
-                { key: 'amount', label: 'Amount Column', required: true },
-                { key: 'category', label: 'Category Column (optional)', required: false },
-                { key: 'type', label: 'Type Column (optional)', required: false },
+                { key: 'date', label: 'Date column', required: true },
+                { key: 'description', label: 'Description column', required: true },
+                { key: 'amount', label: 'Amount column', required: true },
+                { key: 'category', label: 'Category column (optional)', required: false },
+                { key: 'type', label: 'Type column (optional)', required: false },
               ].map(({ key, label, required }) => (
-                <div key={key}>
-                  <label style={{
-                    display: 'block', fontSize: '0.8rem', fontWeight: '600',
-                    color: 'var(--color-text-secondary)', marginBottom: '0.4rem',
-                  }}>
-                    {label} {required && <span style={{ color: 'var(--color-accent-rose)' }}>*</span>}
-                  </label>
-                  <select
-                    className="select-field"
+                <Field key={key} label={<>{label} {required && <span className="text-debit">*</span>}</>}>
+                  <Select
                     value={mapping[key]}
                     onChange={(e) => setMapping({ ...mapping, [key]: e.target.value })}
                   >
-                    <option value="">{required ? 'Select column...' : 'None'}</option>
+                    <option value="">{required ? 'Select column…' : 'None'}</option>
                     {csvData.headers.map((h) => (
                       <option key={h} value={h}>{h}</option>
                     ))}
-                  </select>
-                </div>
+                  </Select>
+                </Field>
               ))}
 
-              <div>
-                <label style={{
-                  display: 'block', fontSize: '0.8rem', fontWeight: '600',
-                  color: 'var(--color-text-secondary)', marginBottom: '0.4rem',
-                }}>
-                  Target Account <span style={{ color: 'var(--color-accent-rose)' }}>*</span>
-                </label>
-                <select
-                  className="select-field"
+              <Field label={<>Target account <span className="text-debit">*</span></>}>
+                <Select
                   value={targetAccountId}
                   onChange={(e) => setTargetAccountId(e.target.value)}
                 >
-                  <option value="">Select account...</option>
+                  <option value="">Select account…</option>
                   {accounts.map((a) => (
                     <option key={a._id} value={a._id}>{a.name}</option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </Field>
 
               {!mapping.type && (
-                <div>
-                  <label style={{
-                    display: 'block', fontSize: '0.8rem', fontWeight: '600',
-                    color: 'var(--color-text-secondary)', marginBottom: '0.4rem',
-                  }}>
-                    Default Transaction Type
-                  </label>
-                  <select
-                    className="select-field"
+                <Field
+                  label="Default transaction type"
+                  hint="If your CSV uses negative numbers for expenses and positive for income, the type is detected from the sign."
+                >
+                  <Select
                     value={defaultType}
                     onChange={(e) => setDefaultType(e.target.value)}
                   >
                     <option value="expense">Expense (negative amounts = expense)</option>
                     <option value="income">Income (positive amounts = income)</option>
-                  </select>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.3rem' }}>
-                    Tip: If your CSV uses negative for expenses and positive for income, type is auto-detected from the sign
-                  </p>
-                </div>
+                  </Select>
+                </Field>
               )}
             </div>
 
             {/* Preview sample rows */}
-            <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                Sample Data (first 3 rows)
-              </h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      {csvData.headers.map((h) => (
-                        <th key={h} style={{
-                          background: [mapping.date, mapping.description, mapping.amount, mapping.category, mapping.type].includes(h)
-                            ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                        }}>
-                          {h}
-                          {h === mapping.date && <span style={{ color: 'var(--color-accent-indigo)', marginLeft: '0.25rem' }}>📅</span>}
-                          {h === mapping.description && <span style={{ color: 'var(--color-accent-indigo)', marginLeft: '0.25rem' }}>📝</span>}
-                          {h === mapping.amount && <span style={{ color: 'var(--color-accent-indigo)', marginLeft: '0.25rem' }}>💰</span>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {csvData.rows.slice(0, 3).map((row, i) => (
-                      <tr key={i}>
-                        {csvData.headers.map((h) => (
-                          <td key={h} style={{
-                            background: [mapping.date, mapping.description, mapping.amount, mapping.category, mapping.type].includes(h)
-                              ? 'rgba(99, 102, 241, 0.04)' : 'transparent',
-                          }}>
-                            {row[h]}
-                          </td>
-                        ))}
-                      </tr>
+            <h4 className="mb-2 mt-8 text-xs text-muted">Sample data (first 3 rows)</h4>
+            <Table>
+              <thead>
+                <tr>
+                  {csvData.headers.map((h) => (
+                    <Th key={h} className={mappedCols.includes(h) ? 'text-ink' : ''}>
+                      {h}
+                      {colTag[h] && <span className="ml-1.5 text-accent">· {colTag[h]}</span>}
+                    </Th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {csvData.rows.slice(0, 3).map((row, i) => (
+                  <tr key={i}>
+                    {csvData.headers.map((h) => (
+                      <Td key={h} className={`whitespace-nowrap text-xs ${mappedCols.includes(h) ? 'text-ink' : 'text-faint'}`}>
+                        {row[h]}
+                      </Td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Section>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <button className="btn-secondary" onClick={resetImport}>Cancel</button>
-            <button
-              className="btn-gradient"
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={resetImport}>Cancel</Button>
+            <Button
               disabled={!mapping.date || !mapping.description || !mapping.amount || !targetAccountId}
               onClick={() => setStep('preview')}
             >
-              Preview Import →
-            </button>
+              Preview import
+            </Button>
           </div>
-        </div>
+        </>
       )}
 
       {/* ─── Step 3: Preview ────────────────────────────────── */}
       {step === 'preview' && (
-        <div className="animate-fade-in">
-          {/* Summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-            <div className="glass-card stat-card-indigo" style={{ padding: '1rem 1.25rem' }}>
-              <p style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Total Rows</p>
-              <p style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-accent-indigo-light)' }}>
-                {previewData.length}
-              </p>
-            </div>
-            <div className="glass-card stat-card-emerald" style={{ padding: '1rem 1.25rem' }}>
-              <p style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Total Income</p>
-              <p style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-accent-emerald-light)' }}>
-                {formatCurrency(previewData.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))}
-              </p>
-            </div>
-            <div className="glass-card stat-card-rose" style={{ padding: '1rem 1.25rem' }}>
-              <p style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Total Expenses</p>
-              <p style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-accent-rose-light)' }}>
-                {formatCurrency(previewData.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))}
-              </p>
-            </div>
-            <div className="glass-card stat-card-amber" style={{ padding: '1rem 1.25rem' }}>
-              <p style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>Excluded</p>
-              <p style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-accent-amber-light)' }}>
-                {excludedRows.size}
-              </p>
-            </div>
-          </div>
+        <>
+          <Tally className="mb-8">
+            <TallyItem label="Rows" value={previewData.length} />
+            <TallyItem
+              label="Income"
+              valueClassName="text-accent"
+              value={formatCurrency(previewData.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))}
+            />
+            <TallyItem
+              label="Expenses"
+              valueClassName="text-debit"
+              value={formatCurrency(previewData.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))}
+            />
+            <TallyItem label="Excluded" valueClassName={excludedRows.size > 0 ? 'text-warn' : 'text-ink'} value={excludedRows.size} />
+          </Tally>
 
-          {/* Preview Table */}
-          <div className="glass-card" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--color-border-default)' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>Review Transactions</h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-                Uncheck rows you don&apos;t want to import
-              </p>
-            </div>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              <table className="data-table">
-                <thead>
+          <Section title="Review entries" aside={<span>Uncheck rows you don&apos;t want to import</span>} className="mb-6" bodyClassName="py-0">
+            <div className="max-h-[400px] overflow-y-auto">
+              <Table>
+                <thead className="sticky top-0 bg-bg">
                   <tr>
-                    <th style={{ width: '40px' }}></th>
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th>Type</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <Th className="w-8"><span className="sr-only">Include</span></Th>
+                    <Th>Date</Th>
+                    <Th>Description</Th>
+                    <Th className="hidden sm:table-cell">Category</Th>
+                    <Th className="hidden sm:table-cell">Type</Th>
+                    <Th align="right">Amount</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -523,103 +426,73 @@ function ImportContent() {
                     const isIncome = amount > 0;
 
                     return (
-                      <tr key={i} style={{ opacity: excluded ? 0.35 : 1, transition: 'opacity 0.2s ease' }}>
-                        <td>
+                      <tr key={i} className={`${rowClass} ${excluded ? 'opacity-35' : ''}`}>
+                        <Td>
                           <input
                             type="checkbox"
                             checked={!excluded}
                             onChange={() => toggleRowExclusion(i)}
-                            style={{ cursor: 'pointer', accentColor: 'var(--color-accent-indigo)' }}
+                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
                           />
-                        </td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-                          {row[mapping.date]}
-                        </td>
-                        <td style={{ fontWeight: '500' }}>
-                          {row[mapping.description] || '—'}
-                        </td>
-                        <td>
-                          <span className="badge badge-indigo" style={{ fontSize: '0.7rem' }}>
-                            {row[mapping.category] || 'Misc'}
+                        </Td>
+                        <Td className="num whitespace-nowrap text-xs text-muted">{row[mapping.date]}</Td>
+                        <Td className="text-ink">{row[mapping.description] || '—'}</Td>
+                        <Td className="hidden sm:table-cell"><Tag>{row[mapping.category] || 'Misc'}</Tag></Td>
+                        <Td className="hidden sm:table-cell">
+                          <Tag tone={isIncome ? 'accent' : 'debit'}>{isIncome ? 'income' : 'expense'}</Tag>
+                        </Td>
+                        <Td align="right">
+                          <span className={`num ${isIncome ? 'text-accent' : 'text-debit'}`}>
+                            {isIncome ? '+' : '-'}{formatCurrency(Math.abs(amount))}
                           </span>
-                        </td>
-                        <td>
-                          <span className={`badge ${isIncome ? 'badge-emerald' : 'badge-rose'}`} style={{ fontSize: '0.7rem' }}>
-                            {isIncome ? 'income' : 'expense'}
-                          </span>
-                        </td>
-                        <td style={{
-                          textAlign: 'right', fontWeight: '600', fontFamily: 'var(--font-mono)',
-                          color: isIncome ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
-                        }}>
-                          {isIncome ? '+' : '-'}{formatCurrency(Math.abs(amount))}
-                        </td>
+                        </Td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+              </Table>
             </div>
-          </div>
+          </Section>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <button className="btn-secondary" onClick={() => setStep('map')}>← Back</button>
-            <button
-              className="btn-gradient"
+          {importResult && !importResult.success && (
+            <p className="mb-4 text-right text-sm text-debit" role="alert">{importResult.message}</p>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setStep('map')}>Back</Button>
+            <Button
               onClick={handleImport}
               disabled={importing || previewData.length === 0}
-              style={{ minWidth: '160px', justifyContent: 'center' }}
+              className="min-w-40"
             >
               {importing ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{
-                    width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)',
-                    borderTopColor: 'white', borderRadius: '50%', display: 'inline-block',
-                    animation: 'spin 0.6s linear infinite',
-                  }} />
-                  Importing...
-                </span>
+                <><Spinner /> Importing…</>
               ) : (
-                `Import ${previewData.length} Transactions`
+                `Import ${previewData.length} transactions`
               )}
-            </button>
+            </Button>
           </div>
-
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        </>
       )}
 
       {/* ─── Step 4: Done ───────────────────────────────────── */}
       {step === 'done' && importResult && (
-        <div className="glass-card animate-fade-in" style={{ padding: '3rem', textAlign: 'center' }}>
-          <div style={{
-            width: '64px', height: '64px', borderRadius: '50%',
-            background: importResult.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.75rem', margin: '0 auto 1.25rem',
-          }}>
-            {importResult.success ? '✅' : '❌'}
-          </div>
-          <h2 style={{
-            fontSize: '1.25rem', fontWeight: '700', marginBottom: '0.5rem',
-            color: importResult.success ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
-          }}>
-            {importResult.success ? 'Import Successful!' : 'Import Failed'}
-          </h2>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', marginBottom: '2rem' }}>
+        <Section title={importResult.success ? 'Import complete' : 'Import failed'}>
+          <p className={`mb-8 text-sm ${importResult.success ? 'text-muted' : 'text-debit'}`}>
             {importResult.message}
           </p>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-            <a href="/transactions" className="btn-secondary" style={{ textDecoration: 'none' }}>
-              View Transactions
-            </a>
-            <button className="btn-gradient" onClick={resetImport}>
-              Import Another File
-            </button>
+          <div className="flex gap-3">
+            <Link
+              href="/transactions"
+              className="inline-flex items-center rounded-sm border border-rule-strong px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-2"
+            >
+              View transactions
+            </Link>
+            <Button onClick={resetImport}>Import another file</Button>
           </div>
-        </div>
+        </Section>
       )}
-    </div>
+    </Page>
   );
 }
 

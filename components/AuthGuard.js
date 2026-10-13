@@ -16,12 +16,8 @@ export default function AuthGuard({ children }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen" style={{ background: 'var(--color-bg-primary)' }}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-3 border-t-transparent rounded-full animate-spin"
-               style={{ borderColor: 'var(--color-accent-indigo)', borderTopColor: 'transparent' }} />
-          <p style={{ color: 'var(--color-text-secondary)' }}>Loading...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }

@@ -10,6 +10,7 @@ import { formatCurrency } from '@/lib/calculation-engine';
 import { ACCOUNT_TYPES } from '@/models/schemas';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
 import { invalidateCache } from '@/lib/data-cache';
+import { Page, Section, Button, TextButton, Input, Select, Field, Table, Th, Td, rowClass, Tag, Skeleton } from '@/components/ui';
 
 function AccountsContent() {
   const { user } = useUser();
@@ -150,132 +151,109 @@ function AccountsContent() {
     setRecalculating(null);
   };
 
-  const typeIcons = {
-    checking: '🏦', savings: '💰', credit: '💳',
-    investment: '📈', cash: '💵', other: '📁',
-  };
-
   const totalBalance = accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
 
   return (
-    <div className="page-container">
-      <div className="animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>Accounts</h1>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
-            Manage your financial accounts · Total: <span style={{ color: 'var(--color-accent-emerald-light)', fontWeight: '600', fontFamily: 'var(--font-mono)' }}>{formatCurrency(totalBalance)}</span>
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            className="btn-secondary"
+    <Page
+      title="Accounts"
+      actions={
+        <>
+          <Button
+            variant="secondary"
             onClick={handleRecalculateAll}
             disabled={recalculating === 'all' || accounts.length === 0}
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
             title="Recalculate all account balances from transaction history"
           >
-            {recalculating === 'all' ? '⏳ Recalculating...' : '🔄 Recalculate All'}
-          </button>
-          <button className="btn-gradient" onClick={openCreate} id="add-account-btn">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          Add Account
-        </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-          {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '140px', borderRadius: 'var(--radius-lg)' }} />)}
-        </div>
-      ) : accounts.length > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-          {accounts.map((acc) => (
-            <div key={acc._id} className="glass-card animate-fade-in" style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{
-                    width: '40px', height: '40px', borderRadius: '10px',
-                    background: 'rgba(99, 102, 241, 0.1)', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem',
-                  }}>
-                    {typeIcons[acc.type] || '📁'}
-                  </div>
-                  <div>
-                    <p style={{ fontWeight: '600', fontSize: '0.95rem' }}>{acc.name}</p>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
-                      {acc.type}{acc.institution ? ` · ${acc.institution}` : ''}
-                    </p>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
-                  <button onClick={() => handleRecalculate(acc._id, acc.name)} disabled={recalculating === acc._id} style={{
-                    background: 'transparent', border: 'none', color: recalculating === acc._id ? 'var(--color-accent-amber)' : 'var(--color-text-muted)',
-                    cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
-                  }} title="Recalculate balance from transactions">{recalculating === acc._id ? '⏳' : '🔄'}</button>
-                  <button onClick={() => openEdit(acc)} style={{
-                    background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
-                    cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
-                  }} title="Edit">✏️</button>
-                  <button onClick={() => handleDelete(acc)} style={{
-                    background: 'transparent', border: 'none', color: 'var(--color-text-muted)',
-                    cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem',
-                  }} title="Delete">🗑️</button>
-                </div>
-              </div>
-              <div style={{ borderTop: '1px solid var(--color-border-default)', paddingTop: '0.75rem' }}>
-                <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Balance</p>
-                <p style={{
-                  fontSize: '1.5rem', fontWeight: '700', fontFamily: 'var(--font-mono)',
-                  color: acc.balance >= 0 ? 'var(--color-accent-emerald-light)' : 'var(--color-accent-rose-light)',
-                }}>
-                  {formatCurrency(acc.balance)}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <p style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</p>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>No accounts yet</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-            Add your first financial account to start tracking your money.
-          </p>
-          <button className="btn-gradient" onClick={openCreate}>Add Your First Account</button>
-        </div>
-      )}
-
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingAccount ? 'Edit Account' : 'New Account'}>
-        <form onSubmit={handleSave}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Account Name</label>
-              <input className="input-field" placeholder="e.g. Main Checking" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Type</label>
-              <select className="select-field" value={form.type} onChange={(e) => setForm({...form, type: e.target.value})}>
-                {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Current Balance</label>
-              <input className="input-field" type="number" step="0.01" placeholder="0.00" value={form.balance} onChange={(e) => setForm({...form, balance: e.target.value})} required />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>Institution (Optional)</label>
-              <input className="input-field" placeholder="e.g. Chase, Wells Fargo" value={form.institution} onChange={(e) => setForm({...form, institution: e.target.value})} />
-            </div>
+            {recalculating === 'all' ? 'Rechecking…' : 'Recheck all'}
+          </Button>
+          <Button onClick={openCreate} id="add-account-btn">Add account</Button>
+        </>
+      }
+    >
+      <Section
+        title="All accounts"
+        aside={<span>Total <span className="num ml-1 text-ink">{formatCurrency(totalBalance)}</span></span>}
+        bodyClassName="py-0"
+      >
+        {loading ? (
+          <div className="space-y-2 py-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-9" />)}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-            <button type="submit" className="btn-gradient" disabled={saving}>
-              {saving ? 'Saving...' : editingAccount ? 'Update' : 'Create'}
-            </button>
+        ) : accounts.length > 0 ? (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Type</Th>
+                <Th className="hidden sm:table-cell">Institution</Th>
+                <Th align="right">Balance</Th>
+                <Th align="right"><span className="sr-only">Actions</span></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((acc) => (
+                <tr key={acc._id} className={rowClass}>
+                  <Td className="text-ink">{acc.name}</Td>
+                  <Td><Tag className="capitalize">{acc.type}</Tag></Td>
+                  <Td className="hidden text-muted sm:table-cell">{acc.institution || '—'}</Td>
+                  <Td align="right">
+                    <span className={`num ${acc.balance >= 0 ? 'text-ink' : 'text-debit'}`}>{formatCurrency(acc.balance)}</span>
+                  </Td>
+                  <Td align="right" className="whitespace-nowrap">
+                    <span className="inline-flex gap-3">
+                      <TextButton
+                        tone="warn"
+                        className="text-xs"
+                        onClick={() => handleRecalculate(acc._id, acc.name)}
+                        disabled={recalculating === acc._id}
+                        title="Recalculate balance from transactions"
+                      >
+                        {recalculating === acc._id ? 'checking…' : 'recheck'}
+                      </TextButton>
+                      <TextButton className="text-xs" onClick={() => openEdit(acc)}>edit</TextButton>
+                      <TextButton tone="debit" className="text-xs" onClick={() => handleDelete(acc)}>delete</TextButton>
+                    </span>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <div className="py-10 text-center">
+            <p className="mb-1 text-ink">No accounts yet</p>
+            <p className="mb-5 text-sm text-muted">Add your first account to start tracking your money.</p>
+            <Button onClick={openCreate}>Add your first account</Button>
+          </div>
+        )}
+      </Section>
+
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingAccount ? 'Edit account' : 'New account'}>
+        <form onSubmit={handleSave}>
+          <div className="flex flex-col gap-4">
+            <Field label="Account name">
+              <Input placeholder="e.g. Main Checking" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
+            </Field>
+            <Field label="Type">
+              <Select value={form.type} onChange={(e) => setForm({...form, type: e.target.value})}>
+                {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Current balance">
+              <Input className="num" type="number" step="0.01" placeholder="0.00" value={form.balance} onChange={(e) => setForm({...form, balance: e.target.value})} required />
+            </Field>
+            <Field label="Institution (optional)">
+              <Input placeholder="e.g. Chase, Wells Fargo" value={form.institution} onChange={(e) => setForm({...form, institution: e.target.value})} />
+            </Field>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingAccount ? 'Update' : 'Create'}
+            </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   );
 }
 

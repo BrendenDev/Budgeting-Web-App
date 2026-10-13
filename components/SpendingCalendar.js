@@ -57,52 +57,60 @@ export default function SpendingCalendar({ dailySpending = {}, selectedDay, onDa
 
   const canGoNext = !isFutureMonth && !(isCurrentMonth);
 
+  // 4 shading steps: quantise intensity so the grid reads as calm bands, not a gradient.
+  const step = (i) => (i <= 0 ? 0 : i <= 0.25 ? 0.25 : i <= 0.5 ? 0.5 : i <= 0.75 ? 0.75 : 1);
+
+  const navBtn =
+    'cursor-pointer px-2 py-1 text-sm text-muted transition-colors hover:text-ink disabled:cursor-default disabled:opacity-30 disabled:hover:text-muted';
+
   return (
-    <div className="spend-calendar">
+    <div>
       {/* Month navigation */}
-      <div className="spend-calendar-nav">
-        <button className="spend-calendar-nav-btn" onClick={goPrev} title="Previous month">←</button>
-        <button className="spend-calendar-month-btn" onClick={goToday} title="Go to current month">
+      <div className="mb-3 flex items-center justify-between">
+        <button className={navBtn} onClick={goPrev} title="Previous month" aria-label="Previous month">←</button>
+        <button
+          className="cursor-pointer text-sm text-ink transition-colors hover:text-accent"
+          onClick={goToday}
+          title="Go to current month"
+        >
           {monthLabel}
         </button>
         <button
-          className="spend-calendar-nav-btn"
+          className={navBtn}
           onClick={goNext}
           disabled={!canGoNext}
           title={canGoNext ? 'Next month' : 'Current month'}
+          aria-label="Next month"
         >→</button>
       </div>
 
       {/* Day-of-week headers */}
-      <div className="spend-calendar-grid">
+      <div className="grid grid-cols-7 gap-px">
         {DAY_LABELS.map(d => (
-          <div key={d} className="spend-calendar-dow">{d}</div>
+          <div key={d} className="pb-1.5 text-center text-[11px] text-faint">{d}</div>
         ))}
 
         {/* Calendar cells */}
         {cells.map(cell => {
           if (cell.type === 'empty') {
-            return <div key={cell.key} className="spend-calendar-cell spend-calendar-cell-empty" />;
+            return <div key={cell.key} />;
           }
           const { day, spent, isFuture, isToday, isSelected, intensity } = cell;
+          const hasSpend = !isFuture && spent > 0;
           return (
             <div
               key={day}
               className={[
-                'spend-calendar-cell',
-                isFuture ? 'cell-future' : '',
-                isToday ? 'cell-today' : '',
-                isSelected ? 'cell-selected' : '',
-                !isFuture && spent > 0 ? 'cell-has-spend' : '',
-              ].filter(Boolean).join(' ')}
+                'cal-shade relative flex min-h-9 flex-col items-center justify-center rounded-sm border md:min-h-12',
+                isFuture ? 'cursor-default text-faint/50' : 'cursor-pointer hover:border-rule-strong',
+                isSelected ? 'border-accent' : isToday ? 'border-muted' : 'border-transparent',
+              ].join(' ')}
               onClick={() => !isFuture && onDayClick?.(day)}
-              style={!isFuture && spent > 0 ? {
-                '--spend-intensity': intensity,
-              } : undefined}
+              style={hasSpend ? { '--spend-intensity': step(intensity) } : undefined}
             >
-              <span className="spend-calendar-day-num">{day}</span>
-              {!isFuture && spent > 0 && (
-                <span className="spend-calendar-amount">
+              <span className={`text-xs ${hasSpend ? 'text-ink' : isFuture ? '' : 'text-muted'}`}>{day}</span>
+              {hasSpend && (
+                <span className="num hidden text-[10px] text-ink/80 sm:block">
                   ${spent >= 1000 ? `${(spent / 1000).toFixed(1)}k` : spent.toFixed(0)}
                 </span>
               )}
