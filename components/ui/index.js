@@ -105,10 +105,6 @@ export function Select({ className, children, ...props }) {
   );
 }
 
-export function Textarea({ className, ...props }) {
-  return <textarea className={cx(controlBase, className)} {...props} />;
-}
-
 /** Underline-only input used by the ledger-line Quick Add. */
 export const lineInputClass =
   'w-full border-0 border-b border-rule bg-transparent px-0 py-1.5 text-sm text-ink placeholder:text-faint ' +

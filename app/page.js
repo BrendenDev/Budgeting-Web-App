@@ -9,7 +9,7 @@ import Sidebar from '@/components/Sidebar';
 import CategoryPicker from '@/components/CategoryPicker';
 import TransactionExplorer from '@/components/TransactionExplorer';
 import SpendingCalendar from '@/components/SpendingCalendar';
-import { formatCurrency, formatDate, projectBalances, calculateMonthlySummary, getCategoryColor, calculateSpendingPacing, calculateSavingsRate, calculateDailyBurnRate, calculateMonthComparison } from '@/lib/calculation-engine';
+import { projectBalances, calculateMonthlySummary, calculateSpendingPacing, calculateSavingsRate, calculateDailyBurnRate, calculateMonthComparison } from '@/lib/calculation-engine';
 import { getTodayMT, getCurrentMonthMT, getCurrentYearMT, toDateStringMT } from '@/lib/date-utils';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/models/schemas';
 import ProjectionChart from '@/components/ProjectionChart';
