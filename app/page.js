@@ -24,7 +24,7 @@ function DashboardContent() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [calendarMonth, setCalendarMonth] = useState(getCurrentMonthMT());
   const [calendarYear, setCalendarYear] = useState(getCurrentYearMT());
-  const [hideRecurring, setHideRecurring] = useState(false);
+  const [showRecurring, setShowRecurring] = useState(false);
   const [includeRecurringInBurn, setIncludeRecurringInBurn] = useState(false);
 
   // Cached data fetches — shared across pages, revalidate on focus
@@ -150,9 +150,9 @@ function DashboardContent() {
 
   // Spending pacing uses the calendar's selected month (not always current month)
   const calendarTransactions = useMemo(() => {
-    if (!hideRecurring) return transactions;
-    return transactions.filter(tx => !tx.isRecurring);
-  }, [transactions, hideRecurring]);
+    if (showRecurring) return transactions;
+    return Array.isArray(transactions) ? transactions.filter(tx => !tx.isRecurring) : [];
+  }, [transactions, showRecurring]);
 
   const spendingPacing = useMemo(() => {
     return calculateSpendingPacing(calendarTransactions, calendarMonth, calendarYear);
@@ -319,11 +319,11 @@ function DashboardContent() {
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted hover:text-ink">
               <input
                 type="checkbox"
-                checked={hideRecurring}
-                onChange={(e) => setHideRecurring(e.target.checked)}
+                checked={showRecurring}
+                onChange={(e) => setShowRecurring(e.target.checked)}
                 className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
               />
-              Hide recurring
+              Show recurring
             </label>
           }
         >

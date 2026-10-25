@@ -6,7 +6,7 @@ import { parseDateSafe } from '@/lib/date-utils';
 export const ACCOUNT_TYPES = ['checking', 'savings', 'credit', 'investment', 'cash', 'other'];
 export const TRANSACTION_TYPES = ['income', 'expense', 'transfer'];
 export const RULE_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
-export const BUCKET_TYPES = ['spending_limit', 'item_goal'];
+export const BUCKET_TYPES = ['spending_limit', 'item_goal', 'savings_placeholder'];
 export const EXPENSE_CATEGORIES = [
   'Rent', 'Cost of Living', 'Food', 'Going Out', 'Gifts', 'Travel', 'Memberships', 'Misc'
 ];
@@ -186,7 +186,7 @@ export function createBudgetConfigDoc(data, userId) {
     ? data.buckets.map((b, i) => ({
         id: b.id ? String(b.id) : `bkt_${Date.now()}_${i}`,
         name: String(b.name || 'Untitled').trim(),
-        type: b.type === 'item_goal' ? 'item_goal' : 'spending_limit',
+        type: BUCKET_TYPES.includes(b.type) ? b.type : 'spending_limit',
         incomePercentage: Number.isFinite(Number(b.incomePercentage))
           ? Math.max(0, Number(b.incomePercentage))
           : 0,

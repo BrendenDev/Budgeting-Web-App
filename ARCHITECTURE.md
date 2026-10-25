@@ -453,12 +453,12 @@ Each calculation is implemented as an independent, pure exported function in `li
      - `expenseDeviationPct = (expenses - rawAvgExpenses) / rawAvgExpenses * 100`
    - Flags `isIncomeOutlier` (`|incomeDeviationPct| > outlierThresholdPct`) and `isExpenseOutlier` (`|expenseDeviationPct| > outlierThresholdPct`), and recomputes `trimmedAvgIncome` and `trimmedAvgExpenses` from their respective non-outlier months.
 
-2. **Module 2 — Top-Down Percentage Buckets & Item Buckets (`evaluateAllBuckets`)**:
-   - Evaluates the budget top-down from `trimmedAvgIncome`:
+2. **Module 2 — Unified Top-Down Buckets (`evaluateAllBuckets`)**:
+   - Evaluates the budget top-down from `trimmedAvgIncome` in a single unified Buckets table:
      1. **Monthly Savings / Drawdown Target**: Set as a percentage of average income or a fixed dollar amount (`savingsTargetMode`, `savingsTargetValue` — supports negative values when budgeting an allowed monthly drawdown).
-     2. **Item Buckets (`item_goal`)**: Extra buckets for specific purchases with a price and target payoff date (`targetDate`). Their monthly cost (`effectiveMonthlyCost`) is deducted from the income pool **before** spending bucket percentages are multiplied, lowering the spendable base without altering assigned bucket percentages.
-     3. **Percentage Spending Buckets (`spending_limit`)**: Each bucket is assigned an `incomePercentage` (`%`) that multiplies against the remaining `spendablePool` (`AvgIncome − SavingsTarget − ItemBuckets`) to determine its max monthly spend (`maxSpend`).
-   - Expenses can be attributed to a `spending_limit` bucket by **categories** (`categories[]`), **specific recurring rules/bills** (`ruleIds[]`), and/or **individual transactions** (`transactionIds[]`), with a per-bucket `includeRecurring` toggle (`true` by default).
+     2. **Spending Buckets (`item_goal`)**: Specific purchases/items with a price and target payoff date (`targetDate`). Their monthly cost (`effectiveMonthlyCost`) is deducted from the income pool **before** percentage buckets are multiplied, lowering the spendable base without altering assigned bucket percentages.
+     3. **Category Buckets (`spending_limit`)**: Assigned an `incomePercentage` (`%`) that multiplies against the remaining `spendablePool` (`AvgIncome − SavingsTarget − SpendingBuckets`) to determine max monthly spend (`maxSpend`). Expenses can be attributed by **categories** (`categories[]`), **specific recurring rules/bills** (`ruleIds[]`), and/or **individual transactions** (`transactionIds[]`), with a per-bucket `includeRecurring` toggle (`true` by default).
+     4. **Savings Placeholder Buckets (`savings_placeholder`)**: Pure percentage placeholder buckets with no categories or transactions attached—reserves a `%` of the spendable pool for extra savings.
    - Clicking any `spending_limit` bucket opens the shared `TransactionExplorer` filtered to that bucket's attributed expenses.
 
 3. **Module 3 — Future Balance & Item Payoff Estimator (`calculateSavingsProjection`)**:
