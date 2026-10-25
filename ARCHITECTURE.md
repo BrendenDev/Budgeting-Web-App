@@ -64,11 +64,7 @@ Budget App/
 │   ├── date-utils.js           # Noon-UTC date normalization + resolveClientToday
 │   ├── recurrence.js           # Single recurring-date engine (client + server)
 │   ├── calculation-engine.js   # Core financial math (client-side)
-│   ├── budget-engine/          # Modular budget analytics math (client-side)
-│   │   ├── baseline.js         # Completed-month average & outlier trimming
-│   │   ├── buckets.js          # Spending caps, recurring toggles, savings/item goals
-│   │   ├── projection.js       # End-of-horizon savings simulator
-│   │   └── index.js            # Barrel export
+│   ├── budget-engine.js        # Modular top-down budget analytics math (client-side)
 │   ├── data-cache.js           # In-memory fetch cache + deduplication
 │   └── use-cached-fetch.js     # React hook wrapping cached fetches
 └── models/
@@ -446,42 +442,32 @@ Users can **reinstate** missing occurrences (re-creates the transaction) or **de
 
 The `/budget` page is a strictly isolated analytics and budgeting workspace. It reads raw `transactions` and `accounts` in memory, stores user budget preferences in its own `budgets` collection, and **never modifies or limits** any core transaction, account, or recurring calculation.
 
-### Modular Architecture (`lib/budget-engine/`)
+### Modular Architecture (`lib/budget-engine.js`)
 
-Each calculation is implemented as an independent, pure module so individual modules can be evolved or embedded on the Overview page later without coupling:
+Each calculation is implemented as an independent, pure exported function in `lib/budget-engine.js` so individual calculations can be evolved or embedded on the Overview page later without coupling:
 
-```
-lib/budget-engine/
-├── baseline.js    # Module 1: Completed-month average + outlier detection & trimming
-├── buckets.js     # Module 2 & 3: Spending caps, recurring toggle, savings/item goals
-├── projection.js  # Module 4: End-of-horizon savings simulator
-└── index.js       # Barrel export
-```
-
-1. **Module 1 — Historical Baseline (`baseline.js`)**:
-   - Inspects the last $N$ **completed calendar months** (`startOffset = 1`, excluding the partial current month by default and ignoring empty pre-signup months).
+1. **Module 1 — Historical Baseline (`calculateHistoricalBaseline`)**:
+   - Inspects the last $N$ **completed calendar months** (`startOffset = 1`, excluding the partial current month and ignoring empty pre-signup months).
    - Computes raw mean income (`rawAvgIncome`) and raw mean expenses (`rawAvgExpenses`) separately across active months, then computes each month's signed deviation percentage off its respective mean:
      - `incomeDeviationPct = (income - rawAvgIncome) / rawAvgIncome * 100`
      - `expenseDeviationPct = (expenses - rawAvgExpenses) / rawAvgExpenses * 100`
    - Flags `isIncomeOutlier` (`|incomeDeviationPct| > outlierThresholdPct`) and `isExpenseOutlier` (`|expenseDeviationPct| > outlierThresholdPct`), and recomputes `trimmedAvgIncome` and `trimmedAvgExpenses` from their respective non-outlier months.
 
-2. **Modules 2 & 3 — Buckets & Recurring Cost Control (`buckets.js`)**:
-   - Supports three bucket types:
-     - `spending_limit`: Monthly spending cap across one or more `EXPENSE_CATEGORIES`. Includes a per-bucket `includeRecurring` boolean (`true` by default) to include or exclude `tx.isRecurring === true` transactions.
-     - `savings_goal`: Target monthly savings allocation (`targetAmount` + `monthlyAmount`).
-     - `item_goal`: Specific purchase target (`targetAmount`, `monthlyAmount`, optional `startingSaved`, and optional `targetDate` which computes required monthly contribution vs. projected completion date).
-   - Clicking any `spending_limit` bucket opens the shared `TransactionExplorer` filtered to that bucket's categories and recurring setting.
+2. **Module 2 — Top-Down Percentage Buckets & Item Buckets (`evaluateAllBuckets`)**:
+   - Evaluates the budget top-down from `trimmedAvgIncome`:
+     1. **Monthly Savings / Drawdown Target**: Set as a percentage of average income or a fixed dollar amount (`savingsTargetMode`, `savingsTargetValue` — supports negative values when budgeting an allowed monthly drawdown).
+     2. **Item Buckets (`item_goal`)**: Extra buckets for specific purchases with a price and target payoff date (`targetDate`). Their monthly cost (`effectiveMonthlyCost`) is deducted from the income pool **before** spending bucket percentages are multiplied, lowering the spendable base without altering assigned bucket percentages.
+     3. **Percentage Spending Buckets (`spending_limit`)**: Each bucket is assigned an `incomePercentage` (`%`) that multiplies against the remaining `spendablePool` (`AvgIncome − SavingsTarget − ItemBuckets`) to determine its max monthly spend (`maxSpend`).
+   - Expenses can be attributed to a `spending_limit` bucket by **categories** (`categories[]`), **specific recurring rules/bills** (`ruleIds[]`), and/or **individual transactions** (`transactionIds[]`), with a per-bucket `includeRecurring` toggle (`true` by default).
+   - Clicking any `spending_limit` bucket opens the shared `TransactionExplorer` filtered to that bucket's attributed expenses.
 
-3. **Module 4 — Savings Horizon Simulator (`projection.js`)**:
-   - Projects net monthly cash flow and cumulative savings over `horizonMonths` under two parallel scenarios:
-     - **Historical Baseline**: `(trimmedAvgIncome - trimmedAvgExpenses) * horizonMonths`
-     - **Bucketed Plan**: `trimmedAvgIncome - (plannedBucketSpend + unbucketedRecurring + unbucketedCategorySpend)`
-   - **Recurring safety**: When a `spending_limit` bucket sets `includeRecurring: false`, its cap only covers one-time spending in those categories. `calculateSavingsProjection` automatically adds `unbucketedRecurring` (the trimmed historical recurring spend for those categories) back into total outflows so fixed bills are never omitted from projected savings.
+3. **Module 3 — Future Balance & Item Payoff Estimator (`calculateSavingsProjection`)**:
+   - Projects total account balance and cumulative savings by any future date (`projectionTargetDate` or `projectionHorizonMonths`), alongside each item bucket's estimated payoff date and progress by that target date.
 
 ### Persistence Model (`/api/budget`)
 
-- Single document per user in `budgets`: `{ userId, settings: { lookbackMonths, outlierThresholdPct, horizonMonths, includeRecurringInBaseline }, buckets: [...] }`.
-- Interactive controls (lookback window, outlier threshold slider, projection horizon) update calculations immediately in React state and **only persist to MongoDB when the user clicks "Save changes"** (or when creating/editing/deleting a bucket).
+- Single document per user in `budgets`: `{ userId, settings: { lookbackMonths, outlierThresholdPct, savingsTargetMode, savingsTargetValue, projectionHorizonMonths, projectionTargetDate }, buckets: [...] }`.
+- Interactive controls (savings target, inline bucket percentages, lookback window, outlier threshold slider, target date) update calculations immediately in React state and **only persist to MongoDB when the user clicks "Save changes"** (or when creating/editing/deleting a bucket).
 
 ---
 

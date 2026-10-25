@@ -6,7 +6,7 @@ import { parseDateSafe } from '@/lib/date-utils';
 export const ACCOUNT_TYPES = ['checking', 'savings', 'credit', 'investment', 'cash', 'other'];
 export const TRANSACTION_TYPES = ['income', 'expense', 'transfer'];
 export const RULE_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
-export const BUCKET_TYPES = ['spending_limit', 'savings_goal', 'item_goal'];
+export const BUCKET_TYPES = ['spending_limit', 'item_goal'];
 export const EXPENSE_CATEGORIES = [
   'Rent', 'Cost of Living', 'Food', 'Going Out', 'Gifts', 'Travel', 'Memberships', 'Misc'
 ];
@@ -15,9 +15,10 @@ export const INCOME_CATEGORIES = ['Work', 'One-Time'];
 export const DEFAULT_BUDGET_SETTINGS = {
   lookbackMonths: 6,
   outlierThresholdPct: 35,
-  includeRecurringInBaseline: true,
-  includeCurrentMonthInBaseline: false,
+  savingsTargetMode: 'percent', // 'percent' | 'amount'
+  savingsTargetValue: 20,       // signed: positive = save, negative = allowed drawdown/loss
   projectionHorizonMonths: 6,
+  projectionTargetDate: null,
 };
 
 export function validateAccount(data) {
@@ -123,6 +124,12 @@ export function validateBudgetConfig(data) {
       if (s.projectionHorizonMonths !== undefined && (isNaN(Number(s.projectionHorizonMonths)) || Number(s.projectionHorizonMonths) < 1 || Number(s.projectionHorizonMonths) > 240)) {
         errors.push('Projection horizon must be between 1 and 240 months');
       }
+      if (s.savingsTargetMode !== undefined && !['percent', 'amount'].includes(s.savingsTargetMode)) {
+        errors.push('Invalid savings target mode');
+      }
+      if (s.savingsTargetValue !== undefined && isNaN(Number(s.savingsTargetValue))) {
+        errors.push('Savings target value must be a number');
+      }
     }
   }
 
@@ -141,8 +148,11 @@ export function validateBudgetConfig(data) {
         if (!BUCKET_TYPES.includes(b.type)) {
           errors.push(`Bucket #${idx + 1}: invalid bucket type`);
         }
-        if (b.monthlyAmount === undefined || isNaN(Number(b.monthlyAmount)) || Number(b.monthlyAmount) < 0) {
+        if (b.monthlyAmount !== undefined && (isNaN(Number(b.monthlyAmount)) || Number(b.monthlyAmount) < 0)) {
           errors.push(`Bucket #${idx + 1}: monthly amount must be a non-negative number`);
+        }
+        if (b.incomePercentage !== undefined && (isNaN(Number(b.incomePercentage)) || Number(b.incomePercentage) < 0 || Number(b.incomePercentage) > 1000)) {
+          errors.push(`Bucket #${idx + 1}: percentage must be a valid non-negative number`);
         }
       });
     }
@@ -160,25 +170,35 @@ export function createBudgetConfigDoc(data, userId) {
     outlierThresholdPct: Number.isFinite(Number(s.outlierThresholdPct))
       ? Math.max(0, Math.min(500, Number(s.outlierThresholdPct)))
       : DEFAULT_BUDGET_SETTINGS.outlierThresholdPct,
-    includeRecurringInBaseline: s.includeRecurringInBaseline !== undefined
-      ? Boolean(s.includeRecurringInBaseline)
-      : DEFAULT_BUDGET_SETTINGS.includeRecurringInBaseline,
-    includeCurrentMonthInBaseline: s.includeCurrentMonthInBaseline !== undefined
-      ? Boolean(s.includeCurrentMonthInBaseline)
-      : DEFAULT_BUDGET_SETTINGS.includeCurrentMonthInBaseline,
+    savingsTargetMode: ['percent', 'amount'].includes(s.savingsTargetMode)
+      ? s.savingsTargetMode
+      : DEFAULT_BUDGET_SETTINGS.savingsTargetMode,
+    savingsTargetValue: Number.isFinite(Number(s.savingsTargetValue))
+      ? Number(s.savingsTargetValue)
+      : DEFAULT_BUDGET_SETTINGS.savingsTargetValue,
     projectionHorizonMonths: Number.isFinite(Number(s.projectionHorizonMonths))
       ? Math.max(1, Math.min(240, Math.round(Number(s.projectionHorizonMonths))))
       : DEFAULT_BUDGET_SETTINGS.projectionHorizonMonths,
+    projectionTargetDate: s.projectionTargetDate ? parseDateSafe(s.projectionTargetDate) : null,
   };
 
   const buckets = Array.isArray(data?.buckets)
     ? data.buckets.map((b, i) => ({
         id: b.id ? String(b.id) : `bkt_${Date.now()}_${i}`,
         name: String(b.name || 'Untitled').trim(),
-        type: BUCKET_TYPES.includes(b.type) ? b.type : 'spending_limit',
+        type: b.type === 'item_goal' ? 'item_goal' : 'spending_limit',
+        incomePercentage: Number.isFinite(Number(b.incomePercentage))
+          ? Math.max(0, Number(b.incomePercentage))
+          : 0,
         monthlyAmount: Math.max(0, Number(b.monthlyAmount) || 0),
         categories: Array.isArray(b.categories)
           ? b.categories.map(String).filter(Boolean)
+          : [],
+        ruleIds: Array.isArray(b.ruleIds)
+          ? b.ruleIds.map(String).filter(Boolean)
+          : [],
+        transactionIds: Array.isArray(b.transactionIds)
+          ? b.transactionIds.map(String).filter(Boolean)
           : [],
         includeRecurring: b.includeRecurring !== undefined ? Boolean(b.includeRecurring) : true,
         targetAmount: b.targetAmount !== undefined && b.targetAmount !== '' && b.targetAmount !== null
@@ -188,7 +208,6 @@ export function createBudgetConfigDoc(data, userId) {
           ? Math.max(0, Number(b.startingSaved) || 0)
           : 0,
         targetDate: b.targetDate ? parseDateSafe(b.targetDate) : null,
-        notes: b.notes ? String(b.notes).trim() : '',
       }))
     : [];
 

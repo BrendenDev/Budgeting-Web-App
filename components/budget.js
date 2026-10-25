@@ -1,8 +1,13 @@
 'use client';
 
 /**
- * Presentational modules for the Budget & Analytics page.
- * Each section renders output from its corresponding lib/budget-engine/* module.
+ * Presentational modules for the Top-Down Budget & Analytics page.
+ * Flow:
+ *   1. Avg Monthly Income (from completed-month baseline with separate income/spend deviation filter)
+ *   2. Monthly Savings / Drawdown Target (% of income or $ amount)
+ *   3. Item Buckets ("things I want to buy" with target payoff dates — lowers spendable pool)
+ *   4. Percentage-Based Spending Buckets (% of remaining spendable pool, attributed by category, recurring rule, or transaction)
+ *   5. Future Balance & Payoff Date Estimator
  */
 
 import { formatCurrency, formatDate } from '@/lib/calculation-engine';
@@ -21,11 +26,11 @@ import {
   inputClass,
 } from '@/components/ui';
 
-/* ── Top Tally Strip (4 simple mental-budget numbers) ─────────── */
+/* ── Top Tally Strip (The 4 numbers of the top-down budget) ───── */
 export function BudgetTallyStrip({ baseline, bucketEval, projection }) {
-  const netMonthly = projection.monthlySavingsBudgeted;
+  const savTarget = bucketEval.monthlySavingsTarget;
+  const savPct = bucketEval.savingsTargetPct;
   const horizonNet = projection.projectedNetSavingsBudgeted;
-  const totalPlannedBuckets = bucketEval.totalSpendingCaps + bucketEval.totalGoalAllocations;
 
   return (
     <Tally className="mb-10">
@@ -35,39 +40,44 @@ export function BudgetTallyStrip({ baseline, bucketEval, projection }) {
         valueClassName="text-accent"
         detail={
           <span>
-            raw mean <span className="num text-muted">{formatCurrency(baseline.rawAvgIncome)}</span>
+            avg spend <span className="num text-ink">{formatCurrency(baseline.trimmedAvgExpenses)}</span>/mo
           </span>
         }
       />
       <TallyItem
-        label="Avg monthly spend"
-        value={formatCurrency(baseline.trimmedAvgExpenses)}
+        label="Monthly savings target"
+        value={`${savTarget >= 0 ? '+' : '−'}${formatCurrency(Math.abs(savTarget))}`}
+        valueClassName={savTarget >= 0 ? 'text-accent' : 'text-debit'}
         detail={
           <span>
-            raw mean <span className="num text-muted">{formatCurrency(baseline.rawAvgExpenses)}</span>
+            <span className="num text-ink">{savPct >= 0 ? '+' : ''}{savPct}%</span> of avg income
           </span>
         }
       />
       <TallyItem
-        label="Planned in buckets"
-        value={formatCurrency(totalPlannedBuckets)}
+        label="Spendable pool (for % buckets)"
+        value={formatCurrency(bucketEval.spendablePool)}
         detail={
-          <span>
-            <span className="num text-ink">{formatCurrency(bucketEval.totalSpendingCaps)}</span> spend ·{' '}
-            <span className="num text-accent">{formatCurrency(bucketEval.totalGoalAllocations)}</span> goals
-          </span>
-        }
-      />
-      <TallyItem
-        label={`Est. savings (${projection.horizonMonths}m)`}
-        value={`${horizonNet >= 0 ? '+' : '−'}${formatCurrency(Math.abs(horizonNet))}`}
-        valueClassName={horizonNet >= 0 ? 'text-accent' : 'text-debit'}
-        detail={
-          <span>
-            <span className={`num ${netMonthly >= 0 ? 'text-accent' : 'text-debit'}`}>
-              {netMonthly >= 0 ? '+' : '−'}{formatCurrency(Math.abs(netMonthly))}/mo
+          bucketEval.totalItemMonthlyCost > 0 ? (
+            <span>
+              after <span className="num text-warn">−{formatCurrency(bucketEval.totalItemMonthlyCost)}/mo</span> items
             </span>
-            {' · by '}{projection.horizonEndLabel}
+          ) : (
+            <span>
+              <span className="num text-ink">{bucketEval.totalAllocatedPct}%</span> allocated in buckets
+            </span>
+          )
+        }
+      />
+      <TallyItem
+        label={`Est. balance (${projection.horizonEndLabel})`}
+        value={formatCurrency(projection.projectedBalanceBudgeted)}
+        detail={
+          <span>
+            <span className={`num ${horizonNet >= 0 ? 'text-accent' : 'text-debit'}`}>
+              {horizonNet >= 0 ? '+' : '−'}{formatCurrency(Math.abs(horizonNet))}
+            </span>
+            {' over '}{projection.horizonMonths}m
           </span>
         }
       />
@@ -75,7 +85,559 @@ export function BudgetTallyStrip({ baseline, bucketEval, projection }) {
   );
 }
 
-/* ── Module 1 UI: Historical Baseline & Outlier Trimming ──────── */
+/* ── Step 1 UI: Monthly Savings / Drawdown Target ─────────────── */
+export function SavingsTargetSection({
+  bucketEval,
+  settings,
+  onChangeSetting,
+}) {
+  const mode = settings.savingsTargetMode || 'percent';
+  const val = Number(settings.savingsTargetValue ?? 20);
+  const avgIncome = bucketEval.avgIncome;
+  const savTarget = bucketEval.monthlySavingsTarget;
+
+  const handleModeSwitch = (nextMode) => {
+    if (nextMode === mode) return;
+    if (nextMode === 'amount') {
+      const dollarVal = Math.round((avgIncome * val) / 100);
+      onChangeSetting('savingsTargetMode', 'amount');
+      onChangeSetting('savingsTargetValue', dollarVal);
+    } else {
+      const pctVal = avgIncome > 0 ? Number(((val / avgIncome) * 100).toFixed(1)) : 20;
+      onChangeSetting('savingsTargetMode', 'percent');
+      onChangeSetting('savingsTargetValue', pctVal);
+    }
+  };
+
+  return (
+    <Section
+      className="mb-10"
+      title="1. Monthly savings target"
+      aside={
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-faint">Set target by:</span>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch('percent')}
+            className={
+              'cursor-pointer px-1.5 py-0.5 transition-colors ' +
+              (mode === 'percent'
+                ? 'text-ink underline decoration-accent underline-offset-4'
+                : 'text-muted hover:text-ink')
+            }
+          >
+            % of income
+          </button>
+          <span className="text-faint">·</span>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch('amount')}
+            className={
+              'cursor-pointer px-1.5 py-0.5 transition-colors ' +
+              (mode === 'amount'
+                ? 'text-ink underline decoration-accent underline-offset-4'
+                : 'text-muted hover:text-ink')
+            }
+          >
+            $ amount
+          </button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        {/* Target input + slider */}
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <span className="text-muted">
+              {val >= 0 ? 'Save per month:' : 'Allowed monthly loss:'}
+            </span>
+            <div className="inline-flex items-center gap-1">
+              {mode === 'amount' && <span className="text-muted">$</span>}
+              <input
+                type="number"
+                step={mode === 'percent' ? '1' : '25'}
+                value={val}
+                onChange={(e) => onChangeSetting('savingsTargetValue', Number(e.target.value) || 0)}
+                className={`${inputClass} num !w-24 !px-2 !py-1 text-right text-sm`}
+                aria-label="Monthly savings target"
+              />
+              {mode === 'percent' && <span className="text-muted">%</span>}
+            </div>
+          </label>
+
+          {mode === 'percent' && (
+            <input
+              type="range"
+              min="-50"
+              max="80"
+              step="1"
+              value={Math.max(-50, Math.min(80, val))}
+              onChange={(e) => onChangeSetting('savingsTargetValue', Number(e.target.value))}
+              className="h-1 w-36 cursor-pointer accent-[var(--color-accent)]"
+              aria-label="Savings percentage slider"
+            />
+          )}
+
+          <span className="text-xs text-faint">
+            (use a negative value like <span className="num">-10</span> if you are okay losing that much per month)
+          </span>
+        </div>
+
+        {/* Live top-down pool equation */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-3 text-xs lg:border-t-0 lg:pt-0">
+          <span>
+            <span className="text-faint">Avg income </span>
+            <span className="num text-accent">{formatCurrency(avgIncome)}</span>
+          </span>
+          <span className="text-faint">{savTarget >= 0 ? '−' : '+'}</span>
+          <span>
+            <span className="text-faint">{savTarget >= 0 ? 'Savings ' : 'Drawdown '}</span>
+            <span className={`num ${savTarget >= 0 ? 'text-accent' : 'text-debit'}`}>
+              {formatCurrency(Math.abs(savTarget))}
+            </span>
+          </span>
+          {bucketEval.totalItemMonthlyCost > 0 && (
+            <>
+              <span className="text-faint">−</span>
+              <span>
+                <span className="text-faint">Items </span>
+                <span className="num text-warn">{formatCurrency(bucketEval.totalItemMonthlyCost)}</span>
+              </span>
+            </>
+          )}
+          <span className="text-faint">=</span>
+          <span>
+            <span className="text-faint">Spendable base </span>
+            <span className="num font-medium text-ink">{formatCurrency(bucketEval.spendablePool)}/mo</span>
+          </span>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/* ── Step 2 UI: Percentage-Based Spending Buckets ─────────────── */
+export function SpendingBucketsSection({
+  bucketEval,
+  rulesMap,
+  selectedBucketId,
+  onSelectBucket,
+  onChangeBucketPct,
+  onAddBucket,
+  onEditBucket,
+  onDeleteBucket,
+  drilldownSlot,
+}) {
+  const {
+    spendingBuckets,
+    spendablePool,
+    totalItemMonthlyCost,
+    totalAllocatedPct,
+    unallocatedPct,
+    totalSpendingCaps,
+    unallocatedSpendableDollar,
+  } = bucketEval;
+
+  return (
+    <Section
+      className="mb-10"
+      title="2. Spending buckets (% of spendable income)"
+      aside={
+        <div className="flex items-center gap-4">
+          <span className="hidden text-xs text-faint sm:inline">
+            Click a bucket name to inspect its transactions
+          </span>
+          <TextButton tone="accent" onClick={() => onAddBucket('spending_limit')}>
+            + add spending bucket
+          </TextButton>
+        </div>
+      }
+      bodyClassName="py-0"
+    >
+      {/* Allocation summary bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rule py-3 text-xs">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+          <span>
+            <span className="text-faint">Spendable base: </span>
+            <span className="num font-medium text-ink">{formatCurrency(spendablePool)}/mo</span>
+          </span>
+          <span>
+            <span className="text-faint">Allocated: </span>
+            <span className={`num font-medium ${totalAllocatedPct > 100 ? 'text-debit' : 'text-ink'}`}>
+              {totalAllocatedPct}%
+            </span>
+            <span className="num text-muted"> ({formatCurrency(totalSpendingCaps)}/mo)</span>
+          </span>
+          <span>
+            <span className="text-faint">{unallocatedPct >= 0 ? 'Unallocated buffer: ' : 'Over-allocated: '}</span>
+            <span className={`num ${unallocatedPct >= 0 ? 'text-accent' : 'text-debit'}`}>
+              {Math.abs(unallocatedPct).toFixed(1)}% ({formatCurrency(Math.abs(unallocatedSpendableDollar))}/mo)
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {spendingBuckets.length === 0 ? (
+        <div className="py-8 text-center">
+          <p className="mb-1 text-sm text-ink">No spending buckets yet</p>
+          <p className="mb-4 text-xs text-muted">
+            Create buckets, attribute categories or specific expenses, and assign each a % of your spendable income.
+          </p>
+          <Button onClick={() => onAddBucket('spending_limit')}>Create spending bucket</Button>
+        </div>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Bucket</Th>
+              <Th className="hidden md:table-cell">Attributed Expenses</Th>
+              <Th align="right">% of Spendable</Th>
+              <Th align="right">Max Spend / mo</Th>
+              <Th align="right" className="hidden sm:table-cell">Usual Avg</Th>
+              <Th align="right">Spent This Month</Th>
+              <Th align="right">Left</Th>
+              <Th align="right"><span className="sr-only">Actions</span></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {spendingBuckets.map((b) => {
+              const isSelected = selectedBucketId === b.id;
+              const barPct = Math.max(0, Math.min(100, b.utilizationPct));
+              const barColor =
+                b.status === 'over' ? 'bg-debit' : b.status === 'near' ? 'bg-warn' : 'bg-accent';
+
+              // Build readable summary of attributed categories, recurring rules, and individual transactions
+              const parts = [];
+              if (Array.isArray(b.categories) && b.categories.length > 0) {
+                parts.push(b.categories.join(', '));
+              }
+              if (Array.isArray(b.ruleIds) && b.ruleIds.length > 0) {
+                const ruleNames = b.ruleIds
+                  .map((id) => rulesMap?.get(String(id))?.name)
+                  .filter(Boolean);
+                parts.push(
+                  ruleNames.length > 0
+                    ? ruleNames.join(', ')
+                    : `${b.ruleIds.length} recurring rule${b.ruleIds.length !== 1 ? 's' : ''}`
+                );
+              }
+              if (Array.isArray(b.transactionIds) && b.transactionIds.length > 0) {
+                parts.push(`${b.transactionIds.length} specific tx`);
+              }
+              const attrLabel = parts.length > 0 ? parts.join(' + ') : 'All expenses';
+
+              return (
+                <tr
+                  key={b.id}
+                  className={`${rowClass} ${isSelected ? 'bg-surface-2' : ''}`}
+                >
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() => onSelectBucket(isSelected ? null : b.id)}
+                      className="cursor-pointer text-left font-medium text-ink underline-offset-4 hover:underline"
+                    >
+                      {b.name}
+                    </button>
+                    <div className="mt-1 h-0.5 w-28 bg-rule" aria-hidden>
+                      <div className={`h-full ${barColor}`} style={{ width: `${barPct}%` }} />
+                    </div>
+                  </Td>
+                  <Td className="hidden max-w-xs truncate text-xs text-muted md:table-cell" title={attrLabel}>
+                    {attrLabel}
+                    {b.includeRecurring === false && (
+                      <span className="ml-1.5 text-[11px] text-faint">(one-time only)</span>
+                    )}
+                  </Td>
+                  <Td align="right">
+                    <div className="inline-flex items-center justify-end gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={b.incomePercentage}
+                        onChange={(e) =>
+                          onChangeBucketPct(b.id, Math.max(0, Number(e.target.value) || 0))
+                        }
+                        className="num w-14 rounded-sm border border-rule bg-surface-2 px-1.5 py-0.5 text-right text-xs text-ink focus:border-accent focus:outline-none"
+                        aria-label={`${b.name} percentage`}
+                      />
+                      <span className="text-xs text-muted">%</span>
+                    </div>
+                  </Td>
+                  <Td align="right">
+                    <span className="num font-medium text-ink">{formatCurrency(b.maxSpend)}</span>
+                    {totalItemMonthlyCost > 0 && b.maxSpendWithoutItems !== b.maxSpend && (
+                      <span className="block text-[11px] text-faint num">
+                        {formatCurrency(b.maxSpendWithoutItems)} before items
+                      </span>
+                    )}
+                  </Td>
+                  <Td align="right" className="hidden sm:table-cell">
+                    <span className="num text-muted">{formatCurrency(b.historicalTrimmedAvg)}</span>
+                  </Td>
+                  <Td align="right">
+                    <span className={`num ${b.status === 'over' ? 'text-debit' : 'text-ink'}`}>
+                      {formatCurrency(b.spentThisMonth)}
+                    </span>
+                  </Td>
+                  <Td align="right">
+                    <span className={`num ${b.remaining >= 0 ? 'text-accent' : 'text-debit'}`}>
+                      {b.remaining >= 0 ? formatCurrency(b.remaining) : `−${formatCurrency(Math.abs(b.remaining))}`}
+                    </span>
+                  </Td>
+                  <Td align="right" className="whitespace-nowrap">
+                    <span className="inline-flex gap-3">
+                      <TextButton className="text-xs" onClick={() => onEditBucket(b)}>edit</TextButton>
+                      <TextButton tone="debit" className="text-xs" onClick={() => onDeleteBucket(b.id)}>delete</TextButton>
+                    </span>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
+      {drilldownSlot}
+    </Section>
+  );
+}
+
+/* ── Step 3 UI: Extra Buckets for Things I Want to Buy ────────── */
+export function GoalBucketsSection({
+  goalBuckets,
+  onAddBucket,
+  onEditBucket,
+  onDeleteBucket,
+}) {
+  return (
+    <Section
+      className="mb-10"
+      title="3. Things to buy (item buckets)"
+      aside={
+        <div className="flex items-center gap-4">
+          <span className="hidden text-xs text-faint sm:inline">
+            Lowers your spendable pool without changing your spending bucket percentages
+          </span>
+          <TextButton tone="accent" onClick={() => onAddBucket('item_goal')}>
+            + add item to buy
+          </TextButton>
+        </div>
+      }
+      bodyClassName="py-0"
+    >
+      {goalBuckets.length === 0 ? (
+        <div className="py-8 text-center">
+          <p className="mb-1 text-sm text-ink">No items queued to buy</p>
+          <p className="mb-4 text-xs text-muted">
+            Add things you want to buy with a target payoff date. Their monthly cost is taken out of your spendable pool before your bucket percentages are multiplied.
+          </p>
+          <Button onClick={() => onAddBucket('item_goal')}>Add item to buy</Button>
+        </div>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Item</Th>
+              <Th align="right">Price / Saved</Th>
+              <Th align="right">Deducted From Pool</Th>
+              <Th align="right">Estimated Payoff Date</Th>
+              <Th align="right"><span className="sr-only">Actions</span></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {goalBuckets.map((g) => {
+              const pct = g.progressPct ?? 0;
+              return (
+                <tr key={g.id} className={rowClass}>
+                  <Td>
+                    <div className="font-medium text-ink">{g.name}</div>
+                    {g.targetAmount > 0 && (
+                      <div className="mt-1 h-0.5 w-28 bg-rule" aria-hidden>
+                        <div className="h-full bg-warn" style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </Td>
+                  <Td align="right">
+                    <span className="num text-ink">
+                      {formatCurrency(g.targetAmount)}
+                    </span>
+                    {g.startingSaved > 0 && (
+                      <span className="block text-[11px] text-faint num">
+                        {formatCurrency(g.startingSaved)} already saved
+                      </span>
+                    )}
+                  </Td>
+                  <Td align="right">
+                    <span className="num text-warn">−{formatCurrency(g.effectiveMonthlyCost)}/mo</span>
+                  </Td>
+                  <Td align="right" className="text-xs text-muted">
+                    {g.targetDate ? (
+                      <span>
+                        By <span className="num text-ink">{formatDate(g.targetDate)}</span>
+                        {g.monthsUntilTargetDate !== null && (
+                          <span className="text-faint"> ({g.monthsUntilTargetDate} mo)</span>
+                        )}
+                      </span>
+                    ) : g.estimatedPayoffLabel ? (
+                      <span>
+                        Est. <span className="num text-ink">{g.estimatedPayoffLabel}</span>
+                        {g.monthsToGoal !== null && (
+                          <span className="text-faint"> (~{g.monthsToGoal} mo)</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </Td>
+                  <Td align="right" className="whitespace-nowrap">
+                    <span className="inline-flex gap-3">
+                      <TextButton className="text-xs" onClick={() => onEditBucket(g)}>edit</TextButton>
+                      <TextButton tone="debit" className="text-xs" onClick={() => onDeleteBucket(g.id)}>delete</TextButton>
+                    </span>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
+    </Section>
+  );
+}
+
+/* ── Step 4 UI: Future Balance & Payoff Date Estimator ────────── */
+export function SavingsProjectionSection({
+  projection,
+  horizonMonths,
+  targetDateStr,
+  onChangeHorizon,
+  onChangeTargetDate,
+}) {
+  return (
+    <Section
+      className="mb-10"
+      title="4. Future balance & payoff estimator"
+      aside={
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-faint">Estimate by:</span>
+          {[3, 6, 12, 24].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onChangeHorizon(m)}
+              className={
+                'num cursor-pointer px-1 transition-colors ' +
+                (horizonMonths === m
+                  ? 'text-ink underline decoration-accent underline-offset-4'
+                  : 'text-muted hover:text-ink')
+              }
+            >
+              {m}m
+            </button>
+          ))}
+          <input
+            type="date"
+            value={targetDateStr || projection.targetDateStr || ''}
+            onChange={(e) => onChangeTargetDate(e.target.value)}
+            className={`${inputClass} num !w-36 !px-2 !py-0.5 text-xs`}
+            aria-label="Target future date for balance estimate"
+          />
+        </div>
+      }
+    >
+      <div className="grid gap-8 lg:grid-cols-2">
+        {/* Future Balance by Selected Date */}
+        <div>
+          <h3 className="mb-2 text-xs text-muted">
+            Projected balance by {projection.horizonEndLabel} ({projection.horizonMonths} mo)
+          </h3>
+          <dl className="divide-y divide-rule border-y border-rule text-sm">
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">Current balance across accounts</dt>
+              <dd className="num text-ink">{formatCurrency(projection.currentBalance)}</dd>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">
+                Monthly savings target ({projection.savingsTargetPct >= 0 ? '+' : ''}{projection.savingsTargetPct}%)
+              </dt>
+              <dd className={`num ${projection.monthlySavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
+                {projection.monthlySavingsBudgeted >= 0 ? '+' : '−'}
+                {formatCurrency(Math.abs(projection.monthlySavingsBudgeted))}/mo
+              </dd>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">
+                Net change over {projection.horizonMonths} month{projection.horizonMonths !== 1 ? 's' : ''}
+              </dt>
+              <dd className={`num font-medium ${projection.projectedNetSavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
+                {projection.projectedNetSavingsBudgeted >= 0 ? '+' : '−'}
+                {formatCurrency(Math.abs(projection.projectedNetSavingsBudgeted))}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="font-medium text-ink">Estimated balance on {projection.horizonEndLabel}</dt>
+              <dd className="num text-base font-medium text-ink">
+                {formatCurrency(projection.projectedBalanceBudgeted)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Item Payoff Timeline */}
+        <div>
+          <h3 className="mb-2 text-xs text-muted">
+            Item payoff status by {projection.horizonEndLabel}
+          </h3>
+          {projection.goalProjections.length === 0 ? (
+            <div className="border-y border-rule py-6 text-center text-xs text-muted">
+              No items queued in &ldquo;Things to buy&rdquo; yet.
+            </div>
+          ) : (
+            <ul className="divide-y divide-rule border-y border-rule text-sm">
+              {projection.goalProjections.map((gp) => (
+                <li key={gp.id} className="flex items-center justify-between py-2.5">
+                  <div>
+                    <div className="font-medium text-ink">{gp.name}</div>
+                    <div className="text-xs text-faint">
+                      {gp.targetDate
+                        ? `Target payoff: ${formatDate(gp.targetDate)}`
+                        : gp.estimatedPayoffLabel
+                          ? `Est. payoff: ${gp.estimatedPayoffLabel}`
+                          : 'Ongoing'}
+                      {' · '}
+                      <span className="num">{formatCurrency(gp.monthlyAmount)}/mo</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="num text-ink">
+                      <span className="text-accent">{formatCurrency(gp.projectedAtHorizon)}</span>
+                      {gp.targetAmount !== null && (
+                        <span className="text-faint"> / {formatCurrency(gp.targetAmount)}</span>
+                      )}
+                    </div>
+                    {gp.willReachGoal !== null && (
+                      <div className="mt-0.5">
+                        {gp.willReachGoal ? (
+                          <Tag tone="accent">paid off by {projection.horizonEndLabel}</Tag>
+                        ) : (
+                          <Tag tone="warn">in progress</Tag>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/* ── Step 5 UI: Historical Baseline & Outlier Trimming ────────── */
 export function BaselineSection({
   baseline,
   settings,
@@ -84,7 +646,7 @@ export function BaselineSection({
   return (
     <Section
       className="mb-10"
-      title="Past months average & deviation filter"
+      title="5. Past months average & deviation filter"
       aside={
         <div className="flex flex-wrap items-center gap-4 text-xs">
           {/* Lookback selector */}
@@ -275,368 +837,6 @@ export function BaselineSection({
           </tbody>
         </Table>
       )}
-    </Section>
-  );
-}
-
-/* ── Module 2 & 3 UI: Spending Caps & Savings/Item Goals ──────── */
-export function SpendingBucketsSection({
-  spendingBuckets,
-  selectedBucketId,
-  onSelectBucket,
-  onToggleBucketRecurring,
-  onAddBucket,
-  onEditBucket,
-  onDeleteBucket,
-  drilldownSlot,
-}) {
-  return (
-    <Section
-      className="mb-10"
-      title="Monthly spending buckets"
-      aside={
-        <div className="flex items-center gap-4">
-          <span className="hidden text-xs text-faint sm:inline">
-            Click a bucket to view its transactions
-          </span>
-          <TextButton tone="accent" onClick={() => onAddBucket('spending_limit')}>
-            + add spending bucket
-          </TextButton>
-        </div>
-      }
-      bodyClassName="py-0"
-    >
-      {spendingBuckets.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="mb-1 text-sm text-ink">No spending buckets yet</p>
-          <p className="mb-4 text-xs text-muted">
-            Set max monthly spend limits for specific categories or your overall spending.
-          </p>
-          <Button onClick={() => onAddBucket('spending_limit')}>Create spending bucket</Button>
-        </div>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Bucket</Th>
-              <Th className="hidden md:table-cell">Categories</Th>
-              <Th>Recurring</Th>
-              <Th align="right">Spent This Month</Th>
-              <Th align="right">Monthly Limit</Th>
-              <Th align="right">Left</Th>
-              <Th align="right"><span className="sr-only">Actions</span></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {spendingBuckets.map((b) => {
-              const isSelected = selectedBucketId === b.id;
-              const barPct = Math.max(0, Math.min(100, b.utilizationPct));
-              const barColor =
-                b.status === 'over' ? 'bg-debit' : b.status === 'near' ? 'bg-warn' : 'bg-accent';
-              const catLabel =
-                Array.isArray(b.categories) && b.categories.length > 0
-                  ? b.categories.join(', ')
-                  : 'All categories';
-
-              return (
-                <tr
-                  key={b.id}
-                  className={`${rowClass} ${isSelected ? 'bg-surface-2' : ''}`}
-                >
-                  <Td>
-                    <button
-                      type="button"
-                      onClick={() => onSelectBucket(isSelected ? null : b.id)}
-                      className="cursor-pointer text-left font-medium text-ink underline-offset-4 hover:underline"
-                    >
-                      {b.name}
-                    </button>
-                    <div className="mt-1 h-0.5 w-28 bg-rule" aria-hidden>
-                      <div className={`h-full ${barColor}`} style={{ width: `${barPct}%` }} />
-                    </div>
-                  </Td>
-                  <Td className="hidden max-w-xs truncate text-xs text-muted md:table-cell" title={catLabel}>
-                    {catLabel}
-                  </Td>
-                  <Td>
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted hover:text-ink">
-                      <input
-                        type="checkbox"
-                        checked={b.includeRecurring !== false}
-                        onChange={(e) => onToggleBucketRecurring(b.id, e.target.checked)}
-                        className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
-                      />
-                      <span>{b.includeRecurring !== false ? 'included' : 'excluded'}</span>
-                    </label>
-                  </Td>
-                  <Td align="right">
-                    <span className={`num ${b.status === 'over' ? 'text-debit' : 'text-ink'}`}>
-                      {formatCurrency(b.spentThisMonth)}
-                    </span>
-                  </Td>
-                  <Td align="right">
-                    <span className="num text-ink">{formatCurrency(b.monthlyAmount)}</span>
-                  </Td>
-                  <Td align="right">
-                    <span className={`num ${b.remaining >= 0 ? 'text-accent' : 'text-debit'}`}>
-                      {b.remaining >= 0 ? formatCurrency(b.remaining) : `−${formatCurrency(Math.abs(b.remaining))}`}
-                    </span>
-                  </Td>
-                  <Td align="right" className="whitespace-nowrap">
-                    <span className="inline-flex gap-3">
-                      <TextButton className="text-xs" onClick={() => onEditBucket(b)}>edit</TextButton>
-                      <TextButton tone="debit" className="text-xs" onClick={() => onDeleteBucket(b.id)}>delete</TextButton>
-                    </span>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
-      {drilldownSlot}
-    </Section>
-  );
-}
-
-export function GoalBucketsSection({
-  goalBuckets,
-  onAddBucket,
-  onEditBucket,
-  onDeleteBucket,
-}) {
-  return (
-    <Section
-      className="mb-10"
-      title="Savings & item goals"
-      aside={
-        <div className="flex items-center gap-4">
-          <TextButton tone="accent" onClick={() => onAddBucket('savings_goal')}>
-            + add savings goal
-          </TextButton>
-          <TextButton tone="accent" onClick={() => onAddBucket('item_goal')}>
-            + save for item
-          </TextButton>
-        </div>
-      }
-      bodyClassName="py-0"
-    >
-      {goalBuckets.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="mb-1 text-sm text-ink">No savings or item goals yet</p>
-          <p className="mb-4 text-xs text-muted">
-            Add a monthly savings target or a specific purchase you want to save up for.
-          </p>
-          <div className="flex justify-center gap-3">
-            <Button variant="secondary" onClick={() => onAddBucket('savings_goal')}>Add savings goal</Button>
-            <Button onClick={() => onAddBucket('item_goal')}>Save for an item</Button>
-          </div>
-        </div>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Goal / Item</Th>
-              <Th align="right">Monthly Set-Aside</Th>
-              <Th align="right">Progress</Th>
-              <Th align="right" className="hidden sm:table-cell">Time Left</Th>
-              <Th align="right"><span className="sr-only">Actions</span></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {goalBuckets.map((g) => {
-              const pct = g.progressPct ?? 0;
-              return (
-                <tr key={g.id} className={rowClass}>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink">{g.name}</span>
-                      <Tag tone={g.type === 'item_goal' ? 'warn' : 'accent'}>
-                        {g.type === 'item_goal' ? 'item' : 'savings'}
-                      </Tag>
-                    </div>
-                    {g.targetAmount !== null && (
-                      <div className="mt-1 h-0.5 w-28 bg-rule" aria-hidden>
-                        <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
-                      </div>
-                    )}
-                  </Td>
-                  <Td align="right">
-                    <span className="num text-accent">+{formatCurrency(g.monthlyAmount)}/mo</span>
-                  </Td>
-                  <Td align="right">
-                    {g.targetAmount !== null ? (
-                      <span className="num text-ink">
-                        {formatCurrency(g.startingSaved)}{' '}
-                        <span className="text-faint">/ {formatCurrency(g.targetAmount)}</span>
-                      </span>
-                    ) : (
-                      <span className="num text-muted">
-                        {g.startingSaved > 0 ? `${formatCurrency(g.startingSaved)} saved` : 'ongoing'}
-                      </span>
-                    )}
-                  </Td>
-                  <Td align="right" className="hidden text-xs text-muted sm:table-cell">
-                    {g.monthsToGoal !== null ? (
-                      <span>
-                        ~<span className="num text-ink">{g.monthsToGoal}</span> mo left
-                        {g.targetDate && g.requiredMonthlyForTargetDate !== null && (
-                          <span className="block text-[11px] text-faint">
-                            Need <span className="num text-muted">{formatCurrency(g.requiredMonthlyForTargetDate)}/mo</span> by {formatDate(g.targetDate)}
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span>Ongoing</span>
-                    )}
-                  </Td>
-                  <Td align="right" className="whitespace-nowrap">
-                    <span className="inline-flex gap-3">
-                      <TextButton className="text-xs" onClick={() => onEditBucket(g)}>edit</TextButton>
-                      <TextButton tone="debit" className="text-xs" onClick={() => onDeleteBucket(g.id)}>delete</TextButton>
-                    </span>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
-    </Section>
-  );
-}
-
-/* ── Module 4 UI: End-of-Horizon Savings Simulator (Simplified) ── */
-export function SavingsProjectionSection({
-  projection,
-  horizonMonths,
-  onChangeHorizon,
-}) {
-  return (
-    <Section
-      title="Estimated savings"
-      aside={
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-faint">Timeframe:</span>
-          {[3, 6, 12, 24, 36].map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => onChangeHorizon(m)}
-              className={
-                'num cursor-pointer px-1 transition-colors ' +
-                (horizonMonths === m
-                  ? 'text-ink underline decoration-accent underline-offset-4'
-                  : 'text-muted hover:text-ink')
-              }
-            >
-              {m}m
-            </button>
-          ))}
-          <span className="inline-flex items-center gap-1">
-            <input
-              type="number"
-              min="1"
-              max="240"
-              value={horizonMonths}
-              onChange={(e) => onChangeHorizon(Math.max(1, Math.min(240, Number(e.target.value) || 1)))}
-              className={`${inputClass} num !w-16 !px-2 !py-0.5 text-right text-xs`}
-              aria-label="Custom horizon in months"
-            />
-            <span className="text-faint">mo ({projection.horizonEndLabel})</span>
-          </span>
-        </div>
-      }
-    >
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Simple Monthly Math */}
-        <div>
-          <h3 className="mb-2 text-xs text-muted">Monthly budget math</h3>
-          <dl className="divide-y divide-rule border-y border-rule text-sm">
-            <div className="flex items-center justify-between py-2.5">
-              <dt className="text-muted">Avg monthly income</dt>
-              <dd className="num text-accent">+{formatCurrency(projection.monthlyIncome)}</dd>
-            </div>
-            <div className="flex items-center justify-between py-2.5">
-              <dt className="text-muted">
-                Expected monthly spend
-                {projection.plannedBucketSpend > 0 && projection.unbucketedCategorySpend > 0 && (
-                  <span className="block text-[11px] text-faint">
-                    {formatCurrency(projection.plannedBucketSpend)} in buckets + {formatCurrency(projection.unbucketedCategorySpend + projection.unbucketedRecurring)} other usual spend
-                  </span>
-                )}
-              </dt>
-              <dd className="num text-debit">−{formatCurrency(projection.totalEffectiveMonthlySpend)}</dd>
-            </div>
-            <div className="flex items-center justify-between py-2.5 font-medium">
-              <dt className="text-ink">
-                Estimated saved per month
-                {projection.plannedGoalContributions > 0 && (
-                  <span className="block text-[11px] font-normal text-faint">
-                    {formatCurrency(projection.plannedGoalContributions)}/mo into goals ·{' '}
-                    {projection.unallocatedMonthlySurplus >= 0 ? '+' : '−'}
-                    {formatCurrency(Math.abs(projection.unallocatedMonthlySurplus))}/mo extra cash
-                  </span>
-                )}
-              </dt>
-              <dd className={`num ${projection.monthlySavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
-                {projection.monthlySavingsBudgeted >= 0 ? '+' : '−'}
-                {formatCurrency(Math.abs(projection.monthlySavingsBudgeted))}/mo
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        {/* Simple End-of-Horizon Outcome */}
-        <div>
-          <h3 className="mb-2 text-xs text-muted">
-            After {projection.horizonMonths} month{projection.horizonMonths !== 1 ? 's' : ''} ({projection.horizonEndLabel})
-          </h3>
-          <dl className="divide-y divide-rule border-y border-rule text-sm">
-            <div className="flex items-center justify-between py-2.5">
-              <dt className="text-muted">Current balance</dt>
-              <dd className="num text-ink">{formatCurrency(projection.currentBalance)}</dd>
-            </div>
-            <div className="flex items-center justify-between py-2.5">
-              <dt className="text-muted">
-                Estimated savings added ({projection.horizonMonths} mo)
-              </dt>
-              <dd className={`num font-medium ${projection.projectedNetSavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
-                {projection.projectedNetSavingsBudgeted >= 0 ? '+' : '−'}
-                {formatCurrency(Math.abs(projection.projectedNetSavingsBudgeted))}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between py-2.5">
-              <dt className="font-medium text-ink">Estimated ending balance</dt>
-              <dd className="num text-base font-medium text-ink">
-                {formatCurrency(projection.projectedBalanceBudgeted)}
-              </dd>
-            </div>
-          </dl>
-
-          {projection.goalProjections.length > 0 && (
-            <div className="mt-4">
-              <h4 className="mb-1.5 text-xs text-faint">Goals by {projection.horizonEndLabel}</h4>
-              <ul className="divide-y divide-rule border-y border-rule text-xs">
-                {projection.goalProjections.map((gp) => (
-                  <li key={gp.id} className="flex items-center justify-between py-1.5">
-                    <span className="text-ink">{gp.name}</span>
-                    <span className="num text-muted">
-                      <span className="text-accent">{formatCurrency(gp.projectedAtHorizon)}</span>
-                      {gp.targetAmount !== null && (
-                        <>
-                          {' / '}{formatCurrency(gp.targetAmount)}
-                          {gp.willReachGoal && <span className="ml-1.5 text-accent">(reached)</span>}
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
     </Section>
   );
 }

@@ -59,8 +59,7 @@ export async function PUT(request) {
       { upsert: true }
     );
 
-    const saved = await db.collection('budgets').findOne({ userId });
-    return NextResponse.json(saved || doc);
+    return NextResponse.json(doc);
   } catch (err) {
     return NextResponse.json({ error: 'Failed to save budget configuration' }, { status: 500 });
   }
