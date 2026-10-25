@@ -180,7 +180,7 @@ export function createBudgetConfigDoc(data, userId) {
         categories: Array.isArray(b.categories)
           ? b.categories.map(String).filter(Boolean)
           : [],
-        includeRecurring: Boolean(b.includeRecurring),
+        includeRecurring: b.includeRecurring !== undefined ? Boolean(b.includeRecurring) : true,
         targetAmount: b.targetAmount !== undefined && b.targetAmount !== '' && b.targetAmount !== null
           ? Math.max(0, Number(b.targetAmount) || 0)
           : null,

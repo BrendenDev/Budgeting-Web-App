@@ -460,14 +460,16 @@ lib/budget-engine/
 
 1. **Module 1 — Historical Baseline (`baseline.js`)**:
    - Inspects the last $N$ **completed calendar months** (`startOffset = 1`, excluding the partial current month by default and ignoring empty pre-signup months).
-   - Computes raw mean expenses across active months, each month's signed deviation percentage `(expenses - rawMean) / rawMean * 100`, and flags months where `|deviationPct| > outlierThresholdPct`.
-   - Recomputes `trimmedAvgIncome`, `trimmedAvgExpenses`, `trimmedAvgRecurring`, `trimmedAvgOneTime`, and `trimmedByCategory` from non-outlier months (falling back to raw averages if every month is flagged).
+   - Computes raw mean income (`rawAvgIncome`) and raw mean expenses (`rawAvgExpenses`) separately across active months, then computes each month's signed deviation percentage off its respective mean:
+     - `incomeDeviationPct = (income - rawAvgIncome) / rawAvgIncome * 100`
+     - `expenseDeviationPct = (expenses - rawAvgExpenses) / rawAvgExpenses * 100`
+   - Flags `isIncomeOutlier` (`|incomeDeviationPct| > outlierThresholdPct`) and `isExpenseOutlier` (`|expenseDeviationPct| > outlierThresholdPct`), and recomputes `trimmedAvgIncome` and `trimmedAvgExpenses` from their respective non-outlier months.
 
 2. **Modules 2 & 3 — Buckets & Recurring Cost Control (`buckets.js`)**:
    - Supports three bucket types:
-     - `spending_limit`: Monthly spending cap across one or more `EXPENSE_CATEGORIES`. Includes a per-bucket `includeRecurring` boolean (`false` by default) to include or exclude `tx.isRecurring === true` transactions from both current-month actuals and trimmed historical category averages.
-     - `savings_goal`: Target monthly savings allocation (`targetAmount` + `monthlyContribution`).
-     - `item_goal`: Specific purchase target (`targetAmount`, `monthlyContribution`, optional `savedSoFar`, and optional `targetDate` which computes required monthly contribution vs. projected completion date).
+     - `spending_limit`: Monthly spending cap across one or more `EXPENSE_CATEGORIES`. Includes a per-bucket `includeRecurring` boolean (`true` by default) to include or exclude `tx.isRecurring === true` transactions.
+     - `savings_goal`: Target monthly savings allocation (`targetAmount` + `monthlyAmount`).
+     - `item_goal`: Specific purchase target (`targetAmount`, `monthlyAmount`, optional `startingSaved`, and optional `targetDate` which computes required monthly contribution vs. projected completion date).
    - Clicking any `spending_limit` bucket opens the shared `TransactionExplorer` filtered to that bucket's categories and recurring setting.
 
 3. **Module 4 — Savings Horizon Simulator (`projection.js`)**:

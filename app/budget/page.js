@@ -61,7 +61,7 @@ function normalizeConfig(raw) {
           type: b.type || 'spending_limit',
           monthlyAmount: Number(b.monthlyAmount) || 0,
           categories: Array.isArray(b.categories) ? b.categories : [],
-          includeRecurring: Boolean(b.includeRecurring),
+          includeRecurring: b.includeRecurring !== undefined ? Boolean(b.includeRecurring) : true,
           targetAmount:
             b.targetAmount !== null && b.targetAmount !== undefined && b.targetAmount !== ''
               ? Number(b.targetAmount)
@@ -127,7 +127,7 @@ function BudgetContent() {
     type: 'spending_limit',
     monthlyAmount: '',
     categories: [],
-    includeRecurring: false,
+    includeRecurring: true,
     targetAmount: '',
     startingSaved: '',
     targetDate: '',
@@ -195,7 +195,7 @@ function BudgetContent() {
       type: defaultType,
       monthlyAmount: '',
       categories: [],
-      includeRecurring: false,
+      includeRecurring: true,
       targetAmount: '',
       startingSaved: '',
       targetDate: '',
@@ -211,7 +211,7 @@ function BudgetContent() {
       type: bucket.type || 'spending_limit',
       monthlyAmount: String(bucket.monthlyAmount ?? ''),
       categories: Array.isArray(bucket.categories) ? [...bucket.categories] : [],
-      includeRecurring: Boolean(bucket.includeRecurring),
+      includeRecurring: bucket.includeRecurring !== undefined ? Boolean(bucket.includeRecurring) : true,
       targetAmount:
         bucket.targetAmount !== null && bucket.targetAmount !== undefined
           ? String(bucket.targetAmount)
@@ -292,7 +292,7 @@ function BudgetContent() {
       calculateHistoricalBaseline(transactions, {
         lookbackMonths: settings.lookbackMonths,
         outlierThresholdPct: settings.outlierThresholdPct,
-        includeRecurring: settings.includeRecurringInBaseline,
+        includeRecurring: true,
         includeCurrentMonth: settings.includeCurrentMonthInBaseline,
       }),
     [transactions, settings]

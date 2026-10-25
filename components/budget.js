@@ -21,41 +21,42 @@ import {
   inputClass,
 } from '@/components/ui';
 
-/* ── Top Tally Strip ──────────────────────────────────────────── */
+/* ── Top Tally Strip (4 simple mental-budget numbers) ─────────── */
 export function BudgetTallyStrip({ baseline, bucketEval, projection }) {
   const netMonthly = projection.monthlySavingsBudgeted;
   const horizonNet = projection.projectedNetSavingsBudgeted;
+  const totalPlannedBuckets = bucketEval.totalSpendingCaps + bucketEval.totalGoalAllocations;
 
   return (
     <Tally className="mb-10">
       <TallyItem
-        label="Trimmed avg spend"
+        label="Avg monthly income"
+        value={formatCurrency(baseline.trimmedAvgIncome)}
+        valueClassName="text-accent"
+        detail={
+          <span>
+            raw mean <span className="num text-muted">{formatCurrency(baseline.rawAvgIncome)}</span>
+          </span>
+        }
+      />
+      <TallyItem
+        label="Avg monthly spend"
         value={formatCurrency(baseline.trimmedAvgExpenses)}
         detail={
           <span>
-            {baseline.keptMonthCount} of {baseline.activeMonthCount} mo · ±{baseline.outlierThresholdPct}% cap
+            raw mean <span className="num text-muted">{formatCurrency(baseline.rawAvgExpenses)}</span>
           </span>
         }
       />
       <TallyItem
-        label="Budgeted spend"
-        value={formatCurrency(projection.totalEffectiveMonthlySpend)}
+        label="Planned in buckets"
+        value={formatCurrency(totalPlannedBuckets)}
         detail={
           <span>
-            <span className="num text-ink">{formatCurrency(bucketEval.totalSpendingCaps)}</span> caps
-            {projection.unbucketedRecurring > 0 && (
-              <> + <span className="num text-muted">{formatCurrency(projection.unbucketedRecurring)}</span> rec</>
-            )}
-            {projection.unbucketedCategorySpend > 0 && (
-              <> + <span className="num text-muted">{formatCurrency(projection.unbucketedCategorySpend)}</span> other</>
-            )}
+            <span className="num text-ink">{formatCurrency(bucketEval.totalSpendingCaps)}</span> spend ·{' '}
+            <span className="num text-accent">{formatCurrency(bucketEval.totalGoalAllocations)}</span> goals
           </span>
         }
-      />
-      <TallyItem
-        label="Goal allocations"
-        value={formatCurrency(bucketEval.totalGoalAllocations)}
-        detail={`${bucketEval.goalBuckets.length} goal${bucketEval.goalBuckets.length !== 1 ? 's' : ''} / mo`}
       />
       <TallyItem
         label={`Est. savings (${projection.horizonMonths}m)`}
@@ -83,12 +84,12 @@ export function BaselineSection({
   return (
     <Section
       className="mb-10"
-      title="Historical baseline & outlier filter"
+      title="Past months average & deviation filter"
       aside={
         <div className="flex flex-wrap items-center gap-4 text-xs">
           {/* Lookback selector */}
           <span className="flex items-center gap-1.5" role="group" aria-label="Lookback months">
-            <span className="text-faint">Window:</span>
+            <span className="text-faint">Months:</span>
             {[3, 6, 9, 12].map((m) => (
               <button
                 key={m}
@@ -108,7 +109,7 @@ export function BaselineSection({
 
           {/* Outlier threshold % */}
           <label className="flex items-center gap-2 text-muted">
-            <span className="text-faint">Max deviation:</span>
+            <span className="text-faint">Accepted deviation:</span>
             <input
               type="range"
               min="5"
@@ -133,130 +134,141 @@ export function BaselineSection({
               <span className="text-faint">%</span>
             </span>
           </label>
-
-          {/* Include recurring in baseline */}
-          <label className="flex cursor-pointer items-center gap-1.5 text-muted hover:text-ink">
-            <input
-              type="checkbox"
-              checked={!!settings.includeRecurringInBaseline}
-              onChange={(e) => onChangeSetting('includeRecurringInBaseline', e.target.checked)}
-              className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
-            />
-            <span>Include recurring</span>
-          </label>
         </div>
       }
       bodyClassName="py-0"
     >
-      {/* Summary bar comparing Raw Mean vs Outlier-Trimmed Mean */}
+      {/* Simple 3-number summary bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rule py-3 text-xs">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
           <span>
-            <span className="text-faint">Raw avg spend: </span>
-            <span className="num text-muted">{formatCurrency(baseline.rawAvgExpenses)}</span>
+            <span className="text-faint">Avg income: </span>
+            <span className="num font-medium text-accent">{formatCurrency(baseline.trimmedAvgIncome)}</span>
+            {baseline.rawAvgIncome !== baseline.trimmedAvgIncome && (
+              <span className="num text-faint"> (raw {formatCurrency(baseline.rawAvgIncome)})</span>
+            )}
           </span>
           <span>
-            <span className="text-faint">Trimmed avg spend: </span>
+            <span className="text-faint">Avg spend: </span>
             <span className="num font-medium text-ink">{formatCurrency(baseline.trimmedAvgExpenses)}</span>
+            {baseline.rawAvgExpenses !== baseline.trimmedAvgExpenses && (
+              <span className="num text-faint"> (raw {formatCurrency(baseline.rawAvgExpenses)})</span>
+            )}
           </span>
           <span>
-            <span className="text-faint">Trimmed avg income: </span>
-            <span className="num text-accent">{formatCurrency(baseline.trimmedAvgIncome)}</span>
-          </span>
-          <span>
-            <span className="text-faint">Split (trimmed): </span>
-            <span className="num text-muted">{formatCurrency(baseline.trimmedAvgRecurring)}</span>
-            <span className="text-faint"> recurring · </span>
-            <span className="num text-muted">{formatCurrency(baseline.trimmedAvgOneTime)}</span>
-            <span className="text-faint"> one-time</span>
+            <span className="text-faint">Avg saved: </span>
+            <span className={`num font-medium ${baseline.trimmedAvgNet >= 0 ? 'text-accent' : 'text-debit'}`}>
+              {baseline.trimmedAvgNet >= 0 ? '+' : '−'}{formatCurrency(Math.abs(baseline.trimmedAvgNet))}/mo
+            </span>
           </span>
         </div>
         <div className="text-faint">
           {baseline.excludedCount > 0 ? (
             <span>
-              Excluded <span className="num text-warn">{baseline.excludedCount}</span> outlier month{baseline.excludedCount !== 1 ? 's' : ''} (&gt; ±{baseline.outlierThresholdPct}% from {formatCurrency(baseline.rawAvgExpenses)})
-              {baseline.allExcludedFallback && ' · all exceeded cap, using raw avg'}
+              Trimmed <span className="num text-warn">{baseline.excludedCount}</span> month{baseline.excludedCount !== 1 ? 's' : ''} outside ±{baseline.outlierThresholdPct}% of mean income or spend
             </span>
           ) : (
-            <span>All active completed months are within ±{baseline.outlierThresholdPct}% of the mean</span>
+            <span>All months within ±{baseline.outlierThresholdPct}% of mean income &amp; spend</span>
           )}
         </div>
       </div>
 
-      {/* Monthly breakdown table */}
+      {/* Monthly breakdown table with separate Income Deviation and Spend Deviation */}
       {baseline.months.length === 0 ? (
         <Empty>No completed months to analyze yet</Empty>
       ) : (
         <Table>
           <thead>
             <tr>
-              <Th>Completed Month</Th>
-              <Th align="right">Income</Th>
-              <Th align="right" className="hidden sm:table-cell">Recurring</Th>
-              <Th align="right" className="hidden sm:table-cell">One-Time</Th>
-              <Th align="right">Evaluated Spend</Th>
-              <Th align="right">Deviation vs Mean</Th>
+              <Th>Month</Th>
+              <Th align="right">Income (vs mean)</Th>
+              <Th align="right">Spent (vs mean)</Th>
+              <Th align="right" className="hidden sm:table-cell">Saved</Th>
               <Th align="right">Status</Th>
             </tr>
           </thead>
           <tbody>
             {baseline.months.map((m) => {
-              const dev = m.expenseDeviationPct;
-              const absDev = Math.min(100, Math.abs(dev));
+              const incDev = m.incomeDeviationPct;
+              const expDev = m.expenseDeviationPct;
+
+              let statusTag;
+              if (!m.hasData) {
+                statusTag = <Tag>no data</Tag>;
+              } else if (m.isIncomeOutlier && m.isExpenseOutlier) {
+                statusTag = <Tag tone="warn">income &amp; spend outlier</Tag>;
+              } else if (m.isIncomeOutlier) {
+                statusTag = <Tag tone="warn">income outlier</Tag>;
+              } else if (m.isExpenseOutlier) {
+                statusTag = <Tag tone="warn">spend outlier</Tag>;
+              } else {
+                statusTag = <Tag tone="accent">included</Tag>;
+              }
+
               return (
                 <tr
                   key={m.key}
-                  className={`${rowClass} ${m.isOutlier || !m.hasData ? 'opacity-45' : ''}`}
+                  className={`${rowClass} ${!m.hasData ? 'opacity-45' : ''}`}
                 >
                   <Td className="text-ink">{m.label}</Td>
+
+                  {/* Income + Deviation vs Mean Income */}
                   <Td align="right">
-                    <span className="num text-accent">{formatCurrency(m.income)}</span>
-                  </Td>
-                  <Td align="right" className="hidden sm:table-cell">
-                    <span className="num text-muted">{formatCurrency(m.recurringExpenses)}</span>
-                  </Td>
-                  <Td align="right" className="hidden sm:table-cell">
-                    <span className="num text-muted">{formatCurrency(m.oneTimeExpenses)}</span>
-                  </Td>
-                  <Td align="right">
-                    <span className="num text-ink">{formatCurrency(m.expenses)}</span>
-                  </Td>
-                  <Td align="right">
-                    {m.hasData ? (
-                      <div className="inline-flex items-center justify-end gap-2">
-                        <span className="hidden h-1 w-14 bg-rule md:inline-block" aria-hidden>
-                          <span
-                            className={`block h-full ${dev > 0 ? 'bg-debit' : 'bg-accent'}`}
-                            style={{ width: `${absDev}%` }}
-                          />
-                        </span>
+                    <div className={`inline-flex flex-wrap items-baseline justify-end gap-2 ${m.isIncomeOutlier ? 'opacity-55' : ''}`}>
+                      <span className="num text-accent">{formatCurrency(m.income)}</span>
+                      {m.hasData && (
                         <span
                           className={`num text-xs ${
-                            m.isOutlier
+                            m.isIncomeOutlier
                               ? 'text-warn'
-                              : dev > 0
-                                ? 'text-debit'
-                                : dev < 0
-                                  ? 'text-accent'
-                                  : 'text-muted'
+                              : incDev > 0
+                                ? 'text-accent'
+                                : incDev < 0
+                                  ? 'text-debit'
+                                  : 'text-faint'
                           }`}
                         >
-                          {dev > 0 ? '+' : ''}{dev.toFixed(1)}%
+                          ({incDev > 0 ? '+' : ''}{incDev.toFixed(1)}%)
                         </span>
-                      </div>
+                      )}
+                    </div>
+                  </Td>
+
+                  {/* Spent + Deviation vs Mean Spend */}
+                  <Td align="right">
+                    <div className={`inline-flex flex-wrap items-baseline justify-end gap-2 ${m.isExpenseOutlier ? 'opacity-55' : ''}`}>
+                      <span className="num text-ink">{formatCurrency(m.expenses)}</span>
+                      {m.hasData && (
+                        <span
+                          className={`num text-xs ${
+                            m.isExpenseOutlier
+                              ? 'text-warn'
+                              : expDev > 0
+                                ? 'text-debit'
+                                : expDev < 0
+                                  ? 'text-accent'
+                                  : 'text-faint'
+                          }`}
+                        >
+                          ({expDev > 0 ? '+' : ''}{expDev.toFixed(1)}%)
+                        </span>
+                      )}
+                    </div>
+                  </Td>
+
+                  {/* Net Saved */}
+                  <Td align="right" className="hidden sm:table-cell">
+                    {m.hasData ? (
+                      <span className={`num ${m.net >= 0 ? 'text-accent' : 'text-debit'}`}>
+                        {m.net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(m.net))}
+                      </span>
                     ) : (
                       <span className="text-xs text-faint">—</span>
                     )}
                   </Td>
-                  <Td align="right">
-                    {!m.hasData ? (
-                      <Tag>no data</Tag>
-                    ) : m.isOutlier ? (
-                      <Tag tone="warn">outlier · excluded</Tag>
-                    ) : (
-                      <Tag tone="accent">included</Tag>
-                    )}
-                  </Td>
+
+                  {/* Outlier Status */}
+                  <Td align="right">{statusTag}</Td>
                 </tr>
               );
             })}
@@ -285,7 +297,7 @@ export function SpendingBucketsSection({
       aside={
         <div className="flex items-center gap-4">
           <span className="hidden text-xs text-faint sm:inline">
-            Click a bucket to inspect transactions · toggle recurring per bucket
+            Click a bucket to view its transactions
           </span>
           <TextButton tone="accent" onClick={() => onAddBucket('spending_limit')}>
             + add spending bucket
@@ -298,7 +310,7 @@ export function SpendingBucketsSection({
         <div className="py-8 text-center">
           <p className="mb-1 text-sm text-ink">No spending buckets yet</p>
           <p className="mb-4 text-xs text-muted">
-            Create category caps to model how much you want to spend per month, with or without recurring bills.
+            Set max monthly spend limits for specific categories or your overall spending.
           </p>
           <Button onClick={() => onAddBucket('spending_limit')}>Create spending bucket</Button>
         </div>
@@ -309,10 +321,9 @@ export function SpendingBucketsSection({
               <Th>Bucket</Th>
               <Th className="hidden md:table-cell">Categories</Th>
               <Th>Recurring</Th>
-              <Th align="right">This Month</Th>
-              <Th align="right" className="hidden sm:table-cell">Trimmed Avg</Th>
-              <Th align="right">Monthly Cap</Th>
-              <Th align="right">Remaining</Th>
+              <Th align="right">Spent This Month</Th>
+              <Th align="right">Monthly Limit</Th>
+              <Th align="right">Left</Th>
               <Th align="right"><span className="sr-only">Actions</span></Th>
             </tr>
           </thead>
@@ -351,20 +362,17 @@ export function SpendingBucketsSection({
                     <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted hover:text-ink">
                       <input
                         type="checkbox"
-                        checked={!!b.includeRecurring}
+                        checked={b.includeRecurring !== false}
                         onChange={(e) => onToggleBucketRecurring(b.id, e.target.checked)}
                         className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
                       />
-                      <span>{b.includeRecurring ? 'included' : 'excluded'}</span>
+                      <span>{b.includeRecurring !== false ? 'included' : 'excluded'}</span>
                     </label>
                   </Td>
                   <Td align="right">
                     <span className={`num ${b.status === 'over' ? 'text-debit' : 'text-ink'}`}>
                       {formatCurrency(b.spentThisMonth)}
                     </span>
-                  </Td>
-                  <Td align="right" className="hidden sm:table-cell">
-                    <span className="num text-muted">{formatCurrency(b.historicalTrimmedAvg)}</span>
                   </Td>
                   <Td align="right">
                     <span className="num text-ink">{formatCurrency(b.monthlyAmount)}</span>
@@ -429,10 +437,9 @@ export function GoalBucketsSection({
           <thead>
             <tr>
               <Th>Goal / Item</Th>
-              <Th>Type</Th>
               <Th align="right">Monthly Set-Aside</Th>
-              <Th align="right">Saved / Target</Th>
-              <Th align="right" className="hidden sm:table-cell">Timeline</Th>
+              <Th align="right">Progress</Th>
+              <Th align="right" className="hidden sm:table-cell">Time Left</Th>
               <Th align="right"><span className="sr-only">Actions</span></Th>
             </tr>
           </thead>
@@ -442,17 +449,17 @@ export function GoalBucketsSection({
               return (
                 <tr key={g.id} className={rowClass}>
                   <Td>
-                    <div className="font-medium text-ink">{g.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-ink">{g.name}</span>
+                      <Tag tone={g.type === 'item_goal' ? 'warn' : 'accent'}>
+                        {g.type === 'item_goal' ? 'item' : 'savings'}
+                      </Tag>
+                    </div>
                     {g.targetAmount !== null && (
                       <div className="mt-1 h-0.5 w-28 bg-rule" aria-hidden>
                         <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
                       </div>
                     )}
-                  </Td>
-                  <Td>
-                    <Tag tone={g.type === 'item_goal' ? 'warn' : 'accent'}>
-                      {g.type === 'item_goal' ? 'item' : 'savings'}
-                    </Tag>
                   </Td>
                   <Td align="right">
                     <span className="num text-accent">+{formatCurrency(g.monthlyAmount)}/mo</span>
@@ -472,15 +479,15 @@ export function GoalBucketsSection({
                   <Td align="right" className="hidden text-xs text-muted sm:table-cell">
                     {g.monthsToGoal !== null ? (
                       <span>
-                        ~<span className="num text-ink">{g.monthsToGoal}</span> mo at current pace
+                        ~<span className="num text-ink">{g.monthsToGoal}</span> mo left
                         {g.targetDate && g.requiredMonthlyForTargetDate !== null && (
                           <span className="block text-[11px] text-faint">
-                            Need <span className="num text-muted">{formatCurrency(g.requiredMonthlyForTargetDate)}/mo</span> for {formatDate(g.targetDate)}
+                            Need <span className="num text-muted">{formatCurrency(g.requiredMonthlyForTargetDate)}/mo</span> by {formatDate(g.targetDate)}
                           </span>
                         )}
                       </span>
                     ) : (
-                      <span>Ongoing allocation</span>
+                      <span>Ongoing</span>
                     )}
                   </Td>
                   <Td align="right" className="whitespace-nowrap">
@@ -499,7 +506,7 @@ export function GoalBucketsSection({
   );
 }
 
-/* ── Module 4 UI: End-of-Horizon Savings Simulator ────────────── */
+/* ── Module 4 UI: End-of-Horizon Savings Simulator (Simplified) ── */
 export function SavingsProjectionSection({
   projection,
   horizonMonths,
@@ -507,10 +514,10 @@ export function SavingsProjectionSection({
 }) {
   return (
     <Section
-      title="Estimated savings simulator"
+      title="Estimated savings"
       aside={
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-faint">Horizon:</span>
+          <span className="text-faint">Timeframe:</span>
           {[3, 6, 12, 24, 36].map((m) => (
             <button
               key={m}
@@ -542,101 +549,74 @@ export function SavingsProjectionSection({
       }
     >
       <div className="grid gap-8 lg:grid-cols-2">
-        {/* Monthly waterfall */}
+        {/* Simple Monthly Math */}
         <div>
-          <h3 className="mb-2 text-xs text-muted">Monthly cash-flow model</h3>
+          <h3 className="mb-2 text-xs text-muted">Monthly budget math</h3>
           <dl className="divide-y divide-rule border-y border-rule text-sm">
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-muted">Trimmed average monthly income</dt>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">Avg monthly income</dt>
               <dd className="num text-accent">+{formatCurrency(projection.monthlyIncome)}</dd>
             </div>
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-muted">Planned spending bucket caps</dt>
-              <dd className="num text-debit">−{formatCurrency(projection.plannedBucketSpend)}</dd>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">
+                Expected monthly spend
+                {projection.plannedBucketSpend > 0 && projection.unbucketedCategorySpend > 0 && (
+                  <span className="block text-[11px] text-faint">
+                    {formatCurrency(projection.plannedBucketSpend)} in buckets + {formatCurrency(projection.unbucketedCategorySpend + projection.unbucketedRecurring)} other usual spend
+                  </span>
+                )}
+              </dt>
+              <dd className="num text-debit">−{formatCurrency(projection.totalEffectiveMonthlySpend)}</dd>
             </div>
-            {projection.unbucketedRecurring > 0 && (
-              <div className="flex items-center justify-between py-2">
-                <dt className="text-muted">
-                  Recurring bills excluded from buckets
-                  <span className="block text-[11px] text-faint">Kept in model so bills aren&apos;t missed</span>
-                </dt>
-                <dd className="num text-debit">−{formatCurrency(projection.unbucketedRecurring)}</dd>
-              </div>
-            )}
-            {projection.unbucketedCategorySpend > 0 && (
-              <div className="flex items-center justify-between py-2">
-                <dt className="text-muted">
-                  Unbucketed categories (trimmed avg)
-                </dt>
-                <dd className="num text-debit">−{formatCurrency(projection.unbucketedCategorySpend)}</dd>
-              </div>
-            )}
-            <div className="flex items-center justify-between py-2 font-medium">
-              <dt className="text-ink">Estimated monthly savings (bucket plan)</dt>
+            <div className="flex items-center justify-between py-2.5 font-medium">
+              <dt className="text-ink">
+                Estimated saved per month
+                {projection.plannedGoalContributions > 0 && (
+                  <span className="block text-[11px] font-normal text-faint">
+                    {formatCurrency(projection.plannedGoalContributions)}/mo into goals ·{' '}
+                    {projection.unallocatedMonthlySurplus >= 0 ? '+' : '−'}
+                    {formatCurrency(Math.abs(projection.unallocatedMonthlySurplus))}/mo extra cash
+                  </span>
+                )}
+              </dt>
               <dd className={`num ${projection.monthlySavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
                 {projection.monthlySavingsBudgeted >= 0 ? '+' : '−'}
-                {formatCurrency(Math.abs(projection.monthlySavingsBudgeted))}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between py-2 text-xs">
-              <dt className="text-faint">Earmarked for savings &amp; item goals</dt>
-              <dd className="num text-muted">−{formatCurrency(projection.plannedGoalContributions)}/mo</dd>
-            </div>
-            <div className="flex items-center justify-between py-2 text-xs">
-              <dt className="text-faint">Unallocated monthly surplus / deficit</dt>
-              <dd className={`num ${projection.unallocatedMonthlySurplus >= 0 ? 'text-ink' : 'text-debit'}`}>
-                {projection.unallocatedMonthlySurplus >= 0 ? '+' : '−'}
-                {formatCurrency(Math.abs(projection.unallocatedMonthlySurplus))}/mo
+                {formatCurrency(Math.abs(projection.monthlySavingsBudgeted))}/mo
               </dd>
             </div>
           </dl>
         </div>
 
-        {/* End of horizon comparison */}
+        {/* Simple End-of-Horizon Outcome */}
         <div>
           <h3 className="mb-2 text-xs text-muted">
-            Projected position after {projection.horizonMonths} month{projection.horizonMonths !== 1 ? 's' : ''} ({projection.horizonEndLabel})
+            After {projection.horizonMonths} month{projection.horizonMonths !== 1 ? 's' : ''} ({projection.horizonEndLabel})
           </h3>
           <dl className="divide-y divide-rule border-y border-rule text-sm">
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-muted">Current total balance across accounts</dt>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="text-muted">Current balance</dt>
               <dd className="num text-ink">{formatCurrency(projection.currentBalance)}</dd>
             </div>
-            <div className="flex items-center justify-between py-2">
+            <div className="flex items-center justify-between py-2.5">
               <dt className="text-muted">
-                Net savings added (bucket plan)
-                <span className="block text-[11px] text-faint">
-                  {formatCurrency(projection.projectedGoalAccumulation)} in goals · {formatCurrency(projection.projectedUnallocatedAccumulation)} unallocated
-                </span>
+                Estimated savings added ({projection.horizonMonths} mo)
               </dt>
               <dd className={`num font-medium ${projection.projectedNetSavingsBudgeted >= 0 ? 'text-accent' : 'text-debit'}`}>
                 {projection.projectedNetSavingsBudgeted >= 0 ? '+' : '−'}
                 {formatCurrency(Math.abs(projection.projectedNetSavingsBudgeted))}
               </dd>
             </div>
-            <div className="flex items-center justify-between py-2">
-              <dt className="text-muted">Projected total balance (bucket plan)</dt>
+            <div className="flex items-center justify-between py-2.5">
+              <dt className="font-medium text-ink">Estimated ending balance</dt>
               <dd className="num text-base font-medium text-ink">
                 {formatCurrency(projection.projectedBalanceBudgeted)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between py-2 text-xs">
-              <dt className="text-faint">
-                If spending stays at historical trimmed avg ({formatCurrency(projection.monthlySavingsHistorical)}/mo net)
-              </dt>
-              <dd className="num text-muted">
-                {formatCurrency(projection.projectedBalanceHistorical)}{' '}
-                <span className="text-faint">
-                  ({projection.projectedNetSavingsHistorical >= 0 ? '+' : '−'}
-                  {formatCurrency(Math.abs(projection.projectedNetSavingsHistorical))})
-                </span>
               </dd>
             </div>
           </dl>
 
           {projection.goalProjections.length > 0 && (
             <div className="mt-4">
-              <h4 className="mb-1.5 text-xs text-faint">Goal balances by {projection.horizonEndLabel}</h4>
+              <h4 className="mb-1.5 text-xs text-faint">Goals by {projection.horizonEndLabel}</h4>
               <ul className="divide-y divide-rule border-y border-rule text-xs">
                 {projection.goalProjections.map((gp) => (
                   <li key={gp.id} className="flex items-center justify-between py-1.5">
