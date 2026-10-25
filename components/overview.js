@@ -10,8 +10,15 @@ import { formatCurrency, formatDate } from '@/lib/calculation-engine';
 import { Tally, TallyItem, Tag, Empty } from '@/components/ui';
 
 /* ── Tally strip ──────────────────────────────────────────────── */
-export function TallyStrip({ totalBalance, accountCount, monthlySummary, monthComparison, savingsRate, burnRate }) {
-  const spentDelta = monthComparison?.deltas?.expenses ?? 0;
+export function TallyStrip({
+  totalBalance,
+  accountCount,
+  monthlySummary,
+  savingsRate,
+  burnRate,
+  includeRecurringInBurn,
+  onToggleBurnRecurring,
+}) {
   const bandColor =
     savingsRate.band === 'red' ? 'bg-debit' : savingsRate.band === 'amber' ? 'bg-warn' : 'bg-accent';
   const ratePct = Math.max(0, Math.min(100, Number(savingsRate.rate) || 0));
@@ -28,21 +35,17 @@ export function TallyStrip({ totalBalance, accountCount, monthlySummary, monthCo
         value={formatCurrency(monthlySummary.net)}
         valueClassName={monthlySummary.net >= 0 ? 'text-accent' : 'text-debit'}
         detail={
-          spentDelta !== 0 ? (
-            <span>
-              spending{' '}
-              <span className={spentDelta > 0 ? 'text-debit' : 'text-accent'}>
-                {spentDelta > 0 ? '▲' : '▼'} {Math.abs(spentDelta)}%
-              </span>{' '}
-              vs last month
-            </span>
-          ) : (
-            <span>
-              <span className="text-accent">+{formatCurrency(monthlySummary.income)}</span>
+          <div className="space-y-0.5 leading-snug">
+            <div>
+              <span className="num text-accent">+{formatCurrency(monthlySummary.income)}</span>
               {' / '}
-              <span className="text-debit">−{formatCurrency(monthlySummary.expenses)}</span>
-            </span>
-          )
+              <span className="num text-debit">−{formatCurrency(monthlySummary.expenses)}</span>
+            </div>
+            <div className="text-[11px] text-faint">
+              <span className="num text-muted">{formatCurrency(monthlySummary.recurringExpenses ?? 0)}</span> recurring ·{' '}
+              <span className="num text-muted">{formatCurrency(monthlySummary.oneTimeExpenses ?? 0)}</span> one-time
+            </div>
+          </div>
         }
       />
       <TallyItem
@@ -55,7 +58,20 @@ export function TallyStrip({ totalBalance, accountCount, monthlySummary, monthCo
         }
       />
       <TallyItem
-        label="Per day"
+        label={
+          <span className="flex items-center justify-between gap-2">
+            <span>Per day</span>
+            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted transition-colors hover:text-ink">
+              <input
+                type="checkbox"
+                checked={!!includeRecurringInBurn}
+                onChange={(e) => onToggleBurnRecurring?.(e.target.checked)}
+                className="h-3 w-3 cursor-pointer accent-[var(--color-accent)]"
+              />
+              <span>+ recurring</span>
+            </label>
+          </span>
+        }
         value={formatCurrency(burnRate.dailyAvg)}
         detail={`~${formatCurrency(burnRate.projected)} by month end`}
       />

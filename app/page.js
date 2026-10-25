@@ -25,6 +25,7 @@ function DashboardContent() {
   const [calendarMonth, setCalendarMonth] = useState(getCurrentMonthMT());
   const [calendarYear, setCalendarYear] = useState(getCurrentYearMT());
   const [hideRecurring, setHideRecurring] = useState(false);
+  const [includeRecurringInBurn, setIncludeRecurringInBurn] = useState(false);
 
   // Cached data fetches — shared across pages, revalidate on focus
   const accountsUrl = user?.id ? `/api/accounts?userId=${user.id}` : null;
@@ -181,8 +182,11 @@ function DashboardContent() {
   }, [monthlySummary]);
 
   const burnRate = useMemo(() => {
-    return calculateDailyBurnRate(transactions, getCurrentMonthMT(), getCurrentYearMT());
-  }, [transactions]);
+    const source = includeRecurringInBurn
+      ? transactions
+      : (Array.isArray(transactions) ? transactions.filter(tx => !tx.isRecurring) : []);
+    return calculateDailyBurnRate(source, getCurrentMonthMT(), getCurrentYearMT());
+  }, [transactions, includeRecurringInBurn]);
 
   const monthComparison = useMemo(() => {
     return calculateMonthComparison(transactions, getCurrentMonthMT(), getCurrentYearMT());
@@ -221,9 +225,10 @@ function DashboardContent() {
         totalBalance={totalBalance}
         accountCount={accounts.length}
         monthlySummary={monthlySummary}
-        monthComparison={monthComparison}
         savingsRate={savingsRate}
         burnRate={burnRate}
+        includeRecurringInBurn={includeRecurringInBurn}
+        onToggleBurnRecurring={setIncludeRecurringInBurn}
       />
 
       {/* ── Quick Add: the next empty line of the ledger ── */}

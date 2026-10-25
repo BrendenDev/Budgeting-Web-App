@@ -110,7 +110,7 @@ export default function SpendingCalendar({ dailySpending = {}, selectedDay, onDa
             >
               <span className={`text-xs ${hasSpend ? 'text-ink' : isFuture ? '' : 'text-muted'}`}>{day}</span>
               {hasSpend && (
-                <span className="num hidden text-[10px] text-ink/80 sm:block">
+                <span className="num text-[9px] leading-tight text-ink/80 sm:text-[10px]">
                   ${spent >= 1000 ? `${(spent / 1000).toFixed(1)}k` : spent.toFixed(0)}
                 </span>
               )}
