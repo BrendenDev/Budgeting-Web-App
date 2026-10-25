@@ -6,6 +6,7 @@ import { useUser } from '@/lib/auth-context';
 
 const navItems = [
   { label: 'Overview', href: '/' },
+  { label: 'Budget', href: '/budget' },
   { label: 'Accounts', href: '/accounts' },
   { label: 'Transactions', href: '/transactions' },
   { label: 'Recurring', href: '/recurring' },

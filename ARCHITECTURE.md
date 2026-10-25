@@ -8,7 +8,7 @@ A personal finance tracker built as a **client-heavy Next.js app** backed by Mon
 
 **Overview:** [Tech Stack](#tech-stack) · [File Structure](#file-structure) · [Design System](#design-system--ledger-after-dark) · [Data Model](#data-model) · [API Routes](#api-routes) · [Data Flow](#data-flow) · [Auth Flow](#auth-flow)
 
-**Guide:** [Core Philosophy](#core-philosophy) · [Design Principles](#design-principles) · [System Patterns](#system-patterns) · [The Balance Problem](#the-balance-problem) · [The Date Problem](#the-date-problem) · [The Recurring Engine](#the-recurring-engine) · [Caching Architecture](#caching-architecture) · [Scaling Strategy](#scaling-strategy) · [Anti-Patterns to Avoid](#anti-patterns-to-avoid) · [Future Implementation Guide](#future-implementation-guide)
+**Guide:** [Core Philosophy](#core-philosophy) · [Design Principles](#design-principles) · [System Patterns](#system-patterns) · [The Balance Problem](#the-balance-problem) · [The Date Problem](#the-date-problem) · [The Recurring Engine](#the-recurring-engine) · [Budget & Analytics Engine](#budget--analytics-engine) · [Caching Architecture](#caching-architecture) · [Scaling Strategy](#scaling-strategy) · [Anti-Patterns to Avoid](#anti-patterns-to-avoid) · [Future Implementation Guide](#future-implementation-guide)
 
 ---
 
@@ -33,11 +33,13 @@ A personal finance tracker built as a **client-heavy Next.js app** backed by Mon
 Budget App/
 ├── app/                        # Pages + API routes (Next.js App Router)
 │   ├── page.js                 # Overview
+│   ├── budget/page.js          # Budget & analytics lab (isolated)
 │   ├── accounts/page.js        # Account management
 │   ├── transactions/page.js    # Transaction explorer
 │   ├── recurring/page.js       # Recurring rules & occurrences
 │   ├── import/page.js          # CSV import wizard
 │   ├── login/page.js           # Google OAuth login
+│   ├── manifest.js             # PWA web app manifest
 │   ├── layout.js               # Root layout (fonts, AuthProvider, DialogProvider)
 │   ├── globals.css             # Design tokens + base styles (~150 lines)
 │   └── api/                    # REST endpoints (see below)
@@ -45,6 +47,7 @@ Budget App/
 │   ├── ui/index.js             # UI kit: Page, Section, Button, TextButton, Input, Select,
 │   │                           #   Field, Table/Th/Td, Tag, Tally/TallyItem, Empty, Skeleton, Spinner
 │   ├── overview.js             # Overview pieces (TallyStrip, CategoryBreakdown, …) — markup only
+│   ├── budget.js               # Budget page sections (Baseline, Buckets, Projection) — markup only
 │   ├── ProjectionChart.js      # SVG balance projection chart
 │   ├── AuthGuard.js            # Route protection
 │   ├── Sidebar.js              # Left rail / mobile bottom bar
@@ -60,7 +63,12 @@ Budget App/
 │   ├── ownership.js            # ownsAccount() check before balance writes
 │   ├── date-utils.js           # Noon-UTC date normalization + resolveClientToday
 │   ├── recurrence.js           # Single recurring-date engine (client + server)
-│   ├── calculation-engine.js   # All financial math (client-side)
+│   ├── calculation-engine.js   # Core financial math (client-side)
+│   ├── budget-engine/          # Modular budget analytics math (client-side)
+│   │   ├── baseline.js         # Completed-month average & outlier trimming
+│   │   ├── buckets.js          # Spending caps, recurring toggles, savings/item goals
+│   │   ├── projection.js       # End-of-horizon savings simulator
+│   │   └── index.js            # Barrel export
 │   ├── data-cache.js           # In-memory fetch cache + deduplication
 │   └── use-cached-fetch.js     # React hook wrapping cached fetches
 └── models/
@@ -87,17 +95,17 @@ Dark UI with ledger structure: ruled sections instead of cards, right-aligned mo
 
 ## Data Model
 
-Four MongoDB collections, all scoped by `userId`:
+Five MongoDB collections, all scoped by `userId`:
 
 ```
-accounts              transactions            rules                 rule_occurrences
-─────────             ──────────────          ─────                 ─────────────────
-_id                   _id                     _id                   _id
-userId                userId                  userId                ruleId
-name                  accountId → accounts    name                  userId
-type                  amount                  amount                lastProcessedDate
-balance (mutable)     description             category              processedDates[]
-initialBalance        category                frequency
+accounts              transactions            rules                 rule_occurrences      budgets
+─────────             ──────────────          ─────                 ─────────────────     ───────
+_id                   _id                     _id                   _id                   _id
+userId                userId                  userId                ruleId                userId (1 doc/user)
+name                  accountId → accounts    name                  userId                settings {}
+type                  amount                  amount                lastProcessedDate     buckets[]
+balance (mutable)     description             category              processedDates[]      createdAt
+initialBalance        category                frequency                                   updatedAt
 institution           date (noon UTC)         startDate
 createdAt             type                    endDate?
 updatedAt             isRecurring             accountId → accounts
@@ -109,6 +117,8 @@ updatedAt             isRecurring             accountId → accounts
 
 **Key invariant**: `account.balance = account.initialBalance + sum(all transactions for account)`
 
+**Strict isolation**: The `budgets` collection stores user-defined budget settings and buckets (one document per user) and has zero foreign-key coupling or side effects on `accounts`, `transactions`, or `rules`.
+
 ---
 
 ## API Routes
@@ -119,6 +129,7 @@ updatedAt             isRecurring             accountId → accounts
 | `/api/accounts/[id]` | GET, PUT, DELETE | Read / update / delete account |
 | `/api/accounts/[id]/recalculate` | POST | Recompute balance from source of truth |
 | `/api/auth/[...nextauth]` | GET, POST | Google OAuth handler |
+| `/api/budget` | GET, PUT | Read / save user budget configuration & buckets |
 | `/api/transactions` | GET, POST | List (filtered, paginated) / create transactions |
 | `/api/transactions/[id]` | GET, PUT, DELETE | Read / update / delete transaction |
 | `/api/transactions/import` | POST | Bulk CSV import |
@@ -428,6 +439,47 @@ When viewing a rule's occurrences:
 | **Orphan** | Transaction exists but date isn't in expected schedule |
 
 Users can **reinstate** missing occurrences (re-creates the transaction) or **delete** individual active occurrences.
+
+---
+
+## Budget & Analytics Engine
+
+The `/budget` page is a strictly isolated analytics and budgeting workspace. It reads raw `transactions` and `accounts` in memory, stores user budget preferences in its own `budgets` collection, and **never modifies or limits** any core transaction, account, or recurring calculation.
+
+### Modular Architecture (`lib/budget-engine/`)
+
+Each calculation is implemented as an independent, pure module so individual modules can be evolved or embedded on the Overview page later without coupling:
+
+```
+lib/budget-engine/
+├── baseline.js    # Module 1: Completed-month average + outlier detection & trimming
+├── buckets.js     # Module 2 & 3: Spending caps, recurring toggle, savings/item goals
+├── projection.js  # Module 4: End-of-horizon savings simulator
+└── index.js       # Barrel export
+```
+
+1. **Module 1 — Historical Baseline (`baseline.js`)**:
+   - Inspects the last $N$ **completed calendar months** (`startOffset = 1`, excluding the partial current month by default and ignoring empty pre-signup months).
+   - Computes raw mean expenses across active months, each month's signed deviation percentage `(expenses - rawMean) / rawMean * 100`, and flags months where `|deviationPct| > outlierThresholdPct`.
+   - Recomputes `trimmedAvgIncome`, `trimmedAvgExpenses`, `trimmedAvgRecurring`, `trimmedAvgOneTime`, and `trimmedByCategory` from non-outlier months (falling back to raw averages if every month is flagged).
+
+2. **Modules 2 & 3 — Buckets & Recurring Cost Control (`buckets.js`)**:
+   - Supports three bucket types:
+     - `spending_limit`: Monthly spending cap across one or more `EXPENSE_CATEGORIES`. Includes a per-bucket `includeRecurring` boolean (`false` by default) to include or exclude `tx.isRecurring === true` transactions from both current-month actuals and trimmed historical category averages.
+     - `savings_goal`: Target monthly savings allocation (`targetAmount` + `monthlyContribution`).
+     - `item_goal`: Specific purchase target (`targetAmount`, `monthlyContribution`, optional `savedSoFar`, and optional `targetDate` which computes required monthly contribution vs. projected completion date).
+   - Clicking any `spending_limit` bucket opens the shared `TransactionExplorer` filtered to that bucket's categories and recurring setting.
+
+3. **Module 4 — Savings Horizon Simulator (`projection.js`)**:
+   - Projects net monthly cash flow and cumulative savings over `horizonMonths` under two parallel scenarios:
+     - **Historical Baseline**: `(trimmedAvgIncome - trimmedAvgExpenses) * horizonMonths`
+     - **Bucketed Plan**: `trimmedAvgIncome - (plannedBucketSpend + unbucketedRecurring + unbucketedCategorySpend)`
+   - **Recurring safety**: When a `spending_limit` bucket sets `includeRecurring: false`, its cap only covers one-time spending in those categories. `calculateSavingsProjection` automatically adds `unbucketedRecurring` (the trimmed historical recurring spend for those categories) back into total outflows so fixed bills are never omitted from projected savings.
+
+### Persistence Model (`/api/budget`)
+
+- Single document per user in `budgets`: `{ userId, settings: { lookbackMonths, outlierThresholdPct, horizonMonths, includeRecurringInBaseline }, buckets: [...] }`.
+- Interactive controls (lookback window, outlier threshold slider, projection horizon) update calculations immediately in React state and **only persist to MongoDB when the user clicks "Save changes"** (or when creating/editing/deleting a bucket).
 
 ---
 
